@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"jsonFilter"
+	"github.com/guillaumeblaquiere/jsonFilter"
 )
 
 func main() {
@@ -23,6 +23,25 @@ func main() {
 	}
 
 	// Perform your query for getting result and match it in the struct that you want to filter
+	// Example with firestore
+	/*
+		results := make([]structExample,0)
+
+		iter := client.Collection("myCollection").Documents(ctx)
+		for {
+			doc, err := iter.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				log.Error(err)
+				break
+			}
+			var d structExample
+			doc.DataTo(&d)
+			results = append(results,d)
+		}
+	*/
 	results := getResultExamples()
 
 	if filterValue != "" {
