@@ -16,7 +16,7 @@ func main() {
 	if filterValue != "" {
 		err := filter.Init(filterValue, structExample{})
 		if err != nil {
-			//TODO error in init
+			//TODO error handling
 			fmt.Println(err)
 			return
 		}
@@ -42,12 +42,12 @@ func main() {
 			results = append(results,d)
 		}
 	*/
-	results := getResultExamples()
+	results := getDummyExamples()
 
 	if filterValue != "" {
 		ret, err := filter.ApplyFilter(results)
 		if err != nil {
-			//TODO error in init
+			//TODO error handling
 			fmt.Println(err)
 			return
 		}
@@ -61,7 +61,7 @@ func main() {
 
 // Generate an example of result to filter
 // Only the 2 first elements of the array are ok with the filter
-func getResultExamples() []structExample {
+func getDummyExamples() []structExample {
 	return []structExample{
 		{
 			Key1: "val1",
