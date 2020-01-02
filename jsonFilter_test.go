@@ -449,6 +449,23 @@ func TestFilter_compileFilter(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "filter on Map with mixed tag/name",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterMap: map[string][]string{
+					"FirstLevelMap.entry1.stringSecondLevel": {"valMap"},
+				},
+				t: reflect.TypeOf(testStruct{}),
+			},
+			wantFilter: map[string][]string{
+				"FirstLevelMap.entry1.LevelString": {"valMap"},
+			},
+			wantErr: false,
+		},
+		{
 			name: "Filter in array values on Name",
 			fields: fields{
 				options: defaultOption,
@@ -524,11 +541,6 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 				filterKey: "FirstLevelString",
 				entryValues: reflect.ValueOf(testStruct{
 					FirstLevelString: "value1",
-					FirstLevelInt:    0,
-					FirstLevelFloat:  0,
-					FirstLevelBool:   false,
-					FirstLevelArray:  nil,
-					FirstLevelStruct: secondLevelStruct{},
 				}),
 			},
 			want: []reflect.Value{
@@ -544,12 +556,7 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			args: args{
 				filterKey: "FirstLevelInt",
 				entryValues: reflect.ValueOf(testStruct{
-					FirstLevelString: "value1",
-					FirstLevelInt:    2,
-					FirstLevelFloat:  0,
-					FirstLevelBool:   false,
-					FirstLevelArray:  nil,
-					FirstLevelStruct: secondLevelStruct{},
+					FirstLevelInt: 2,
 				}),
 			},
 			want: []reflect.Value{
@@ -565,12 +572,7 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			args: args{
 				filterKey: "FirstLevelFloat",
 				entryValues: reflect.ValueOf(testStruct{
-					FirstLevelString: "value1",
-					FirstLevelInt:    0,
-					FirstLevelFloat:  -1.2,
-					FirstLevelBool:   false,
-					FirstLevelArray:  nil,
-					FirstLevelStruct: secondLevelStruct{},
+					FirstLevelFloat: -1.2,
 				}),
 			},
 			want: []reflect.Value{
@@ -586,12 +588,7 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			args: args{
 				filterKey: "FirstLevelBool",
 				entryValues: reflect.ValueOf(testStruct{
-					FirstLevelString: "value1",
-					FirstLevelInt:    0,
-					FirstLevelFloat:  0,
-					FirstLevelBool:   true,
-					FirstLevelArray:  nil,
-					FirstLevelStruct: secondLevelStruct{},
+					FirstLevelBool: true,
 				}),
 			},
 			want: []reflect.Value{
@@ -607,15 +604,10 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			args: args{
 				filterKey: "FirstLevelArray",
 				entryValues: reflect.ValueOf(testStruct{
-					FirstLevelString: "value1",
-					FirstLevelInt:    0,
-					FirstLevelFloat:  0,
-					FirstLevelBool:   false,
 					FirstLevelArray: []secondLevelStruct{
 						{LevelString: "string1"},
 						{LevelString: "string2"},
 					},
-					FirstLevelStruct: secondLevelStruct{},
 				}),
 			},
 			want: []reflect.Value{
@@ -632,12 +624,85 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			args: args{
 				filterKey: "FirstLevelStruct",
 				entryValues: reflect.ValueOf(testStruct{
-					FirstLevelString: "value1",
-					FirstLevelInt:    0,
-					FirstLevelFloat:  0,
-					FirstLevelBool:   false,
-					FirstLevelArray:  nil,
 					FirstLevelStruct: secondLevelStruct{"string3"},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(secondLevelStruct{"string3"}),
+			},
+		},
+		{
+			name: "Ok Ptr Struct",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "FirstLevelPtrStruct",
+				entryValues: reflect.ValueOf(testStruct{
+					FirstLevelPtrStruct: &secondLevelStruct{"string3"},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(&secondLevelStruct{"string3"}),
+			},
+		},
+		{
+			name: "Ok nil Ptr",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "FirstLevelPtrStruct.LevelString",
+				entryValues: reflect.ValueOf(testStruct{
+					FirstLevelPtrStruct: nil,
+				}),
+			},
+			want: []reflect.Value{reflect.ValueOf(testStruct{}.FirstLevelPtrStruct)},
+		},
+		{
+			name: "Ok Ptr Struct evaluated",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "FirstLevelPtrStruct.LevelString",
+				entryValues: reflect.ValueOf(testStruct{
+					FirstLevelPtrStruct: &secondLevelStruct{"string3"},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf("string3"),
+			},
+		},
+		{
+			name: "Ok Map",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "FirstLevelMap",
+				entryValues: reflect.ValueOf(testStruct{
+					FirstLevelMap: map[string]secondLevelStruct{"entry1": {"string3"}},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(map[string]secondLevelStruct{"entry1": {"string3"}}),
+			},
+		},
+		{
+			name: "Ok Map with entry",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "FirstLevelMap.entry1",
+				entryValues: reflect.ValueOf(testStruct{
+					FirstLevelMap: map[string]secondLevelStruct{"entry1": {"string3"}},
 				}),
 			},
 			want: []reflect.Value{
@@ -651,15 +716,8 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterKey: "noKey",
-				entryValues: reflect.ValueOf(testStruct{
-					FirstLevelString: "value1",
-					FirstLevelInt:    0,
-					FirstLevelFloat:  0,
-					FirstLevelBool:   false,
-					FirstLevelArray:  nil,
-					FirstLevelStruct: secondLevelStruct{"string3"},
-				}),
+				filterKey:   "noKey",
+				entryValues: reflect.ValueOf(testStruct{}),
 			},
 			want: []reflect.Value{reflect.ValueOf(nil)},
 		},
@@ -827,6 +885,14 @@ func Test_foundFieldInStruct(t *testing.T) {
 			wantFieldName: getField(reflect.TypeOf(testStruct{}), 0),
 		},
 		{
+			name: "Ptr get elem",
+			args: args{
+				filterKey: "ptrStructFirstLevel",
+				t:         reflect.TypeOf(&testStruct{}),
+			},
+			wantFieldName: getField(reflect.TypeOf(testStruct{}), 6),
+		},
+		{
 			name: "not found",
 			args: args{
 				filterKey: "not found",
@@ -856,11 +922,12 @@ type secondLevelStruct struct {
 }
 
 type testStruct struct {
-	FirstLevelString string              `json:"stringFirstLevel"`
-	FirstLevelInt    int                 `json:"intFirstLevel"`
-	FirstLevelFloat  float32             `json:"floatFirstLevel"`
-	FirstLevelBool   bool                `json:"boolFirstLevel"`
-	FirstLevelArray  []secondLevelStruct `json:"arrayFirstLevel"`
-	FirstLevelStruct secondLevelStruct   `json:"structFirstLevel"`
-	//TODO map
+	FirstLevelString    string                       `json:"stringFirstLevel"`
+	FirstLevelInt       int                          `json:"intFirstLevel"`
+	FirstLevelFloat     float32                      `json:"floatFirstLevel"`
+	FirstLevelBool      bool                         `json:"boolFirstLevel"`
+	FirstLevelArray     []secondLevelStruct          `json:"arrayFirstLevel"`
+	FirstLevelStruct    secondLevelStruct            `json:"structFirstLevel"`
+	FirstLevelPtrStruct *secondLevelStruct           `json:"ptrStructFirstLevel"`
+	FirstLevelMap       map[string]secondLevelStruct `json:"mapFirstLevel"`
 }

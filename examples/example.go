@@ -10,7 +10,7 @@ func main() {
 	// Get the filter from a request, in query parameter for example. Define the filters field that you want
 	// filters, _ := r.URL.Query()["filters"]
 
-	filterValue := "Key1=val1,val2:composed.SubKey=val3"
+	filterValue := "Key1=val1,val2:composed.SubKey=val3:Maps.entry1.key1=val5,val4"
 
 	filter := jsonFilter.Filter{}
 	if filterValue != "" {
@@ -65,31 +65,49 @@ func getDummyExamples() []structExample {
 	return []structExample{
 		{
 			Key1: "val1",
-			SecondKey: struct {
-				SubKey string `json:"skey"`
-			}{"val3"},
+			Key2: &SecondStruct{"val3"},
+			Maps: map[string]structExample{
+				"entry1": {
+					Key1: "val4",
+				},
+				"entry2": {
+					Key1: "val4",
+				},
+			},
 		},
 		{
 			Key1: "val2",
-			SecondKey: struct {
-				SubKey string `json:"skey"`
-			}{"val3"},
+			Key2: &SecondStruct{"val3"},
+			Maps: map[string]structExample{
+				"entry1": {
+					Key1: "val5",
+				},
+			},
 		},
 		{
 			Key1: "val2",
-			SecondKey: struct {
-				SubKey string `json:"skey"`
-			}{"val"},
+			Key2: &SecondStruct{"val"},
 		},
 		{
 			Key1: "val1",
+			Maps: map[string]structExample{
+				"entry1": {
+					Key1: "val6",
+				},
+				"entry2": {
+					Key1: "val4",
+				},
+			},
 		},
 	}
 }
 
+type SecondStruct struct {
+	SubKey string `json:"skey,omitempty"`
+}
+
 type structExample struct {
-	Key1      string `json:"key1"`
-	SecondKey struct {
-		SubKey string `json:"skey"`
-	} `json:"composed"`
+	Key1 string                   `json:"key1,omitempty"`
+	Key2 *SecondStruct            `json:"composed,omitempty"`
+	Maps map[string]structExample `json:"maps,omitempty"`
 }

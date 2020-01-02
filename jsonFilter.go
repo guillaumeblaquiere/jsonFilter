@@ -177,15 +177,36 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 
 		// Scan recursively all sub values found
 		for _, valueToScan := range valuesToScan {
-			res := valueToScan.FieldByName(part)
+			val := valueToScan
 
-			// In case of array found, add all the matching values to the result (or next value th scan if not the leaf)
-			if res.Kind() == reflect.Slice {
-				for i := 0; i < res.Len(); i++ {
-					scanResult = append(scanResult, res.Index(i))
+			//In case of pointer
+			if valueToScan.Kind() == reflect.Ptr {
+				//If the pointer lead to nil value
+				if val.Pointer() == 0 {
+					continue
 				}
-			} else {
-				scanResult = append(scanResult, res)
+				val = valueToScan.Elem()
+			}
+
+			// If the current element is a map
+			if val.Kind() == reflect.Map {
+				// search the matching key in the value list
+				for _, v := range val.MapKeys() {
+					if fmt.Sprint(v) == part {
+						scanResult = append(scanResult, val.MapIndex(v))
+					}
+				}
+			} else { // if not, scan the structure
+				res := val.FieldByName(part)
+
+				// In case of array found, add all the matching values to the result (or next value th scan if not the leaf)
+				if res.Kind() == reflect.Slice {
+					for i := 0; i < res.Len(); i++ {
+						scanResult = append(scanResult, res.Index(i))
+					}
+				} else {
+					scanResult = append(scanResult, res)
+				}
 			}
 		}
 		valuesToScan = scanResult
@@ -241,24 +262,34 @@ func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (e
 
 		// validate the struct field name according with the key composition. Going deeper and deeper
 		for i, part := range filterKeyPart {
-			fieldStruct := foundFieldInStruct(part, objectToInspect)
-			// If no match found, raise an error
-			if fieldStruct == nil {
-				log.Debugf("The Filter key %s not exist in the type %s", part, t.Name())
-				return errors.New(fmt.Sprintf("The Filter key %s not exist in the returned object", composedFilterKey+" "+part))
-			}
-			objectToInspect = fieldStruct.Type
+			var composedPart string
 
-			// If slice, get only the elements type
-			if objectToInspect.Kind() == reflect.Slice {
+			//if map, keep the key as is
+			if objectToInspect.Kind() == reflect.Map {
+				composedPart = part
 				objectToInspect = objectToInspect.Elem()
-			}
+			} else { // look into the structure
 
-			// If it's not the root element of the composed key, add a separator the the filter name
+				fieldStruct := foundFieldInStruct(part, objectToInspect)
+				// If no match found, raise an error
+				if fieldStruct == nil {
+					log.Debugf("The Filter key %s not exist in the type %s", part, t.Name())
+					return errors.New(fmt.Sprintf("The Filter key %s not exist in the returned object", composedFilterKey+" "+part))
+				}
+				objectToInspect = fieldStruct.Type
+
+				// If slice, get only the elements type
+				if objectToInspect.Kind() == reflect.Slice {
+					objectToInspect = objectToInspect.Elem()
+				}
+
+				// If it's not the root element of the composed key, add a separator the the filter name
+				composedPart = fieldStruct.Name
+			}
 			if i != 0 {
 				composedFilterKey += f.options.ComposedKeySeparator
 			}
-			composedFilterKey += fieldStruct.Name
+			composedFilterKey += composedPart
 		}
 		f.filter[composedFilterKey] = filterValues
 	}
@@ -268,11 +299,17 @@ func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (e
 // Return the structField found according with the filter key name and the type to scan.
 // Return nil if nothing found in the type.
 func foundFieldInStruct(filterKey string, t reflect.Type) *reflect.StructField {
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
+	internalType := t
+	//In case of ptr
+	if t.Kind() == reflect.Ptr {
+		internalType = t.Elem()
+	}
+
+	for i := 0; i < internalType.NumField(); i++ {
+		field := internalType.Field(i)
 
 		// on each fields, check if the Filter can be applied
-		if field.Tag.Get("json") == filterKey ||
+		if strings.Contains(field.Tag.Get("json"), filterKey) ||
 			field.Name == filterKey {
 			// When found,add it to the map and go to the next Filter field
 			return &field
