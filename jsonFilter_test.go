@@ -164,22 +164,22 @@ func TestFilter_SetOptions(t *testing.T) {
 		o *Options
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
+		name       string
+		fields     fields
+		args       args
+		wantOption *Options
 	}{
 		{
-			name:    "Correct Option",
-			fields:  fields{},
-			args:    args{o: defaultOption},
-			wantErr: false,
+			name:       "Correct Option",
+			fields:     fields{},
+			args:       args{o: defaultOption},
+			wantOption: defaultOption,
 		},
 		{
-			name:    "nil option",
-			fields:  fields{},
-			args:    args{o: nil},
-			wantErr: true,
+			name:       "nil option",
+			fields:     fields{},
+			args:       args{o: nil},
+			wantOption: defaultOption,
 		},
 		{
 			name:   "negative max depth",
@@ -191,55 +191,55 @@ func TestFilter_SetOptions(t *testing.T) {
 				KeysSeparator:        "",
 				ComposedKeySeparator: "",
 			}},
-			wantErr: true,
+			wantOption: defaultOption,
 		},
 		{
 			name:   "empty KeyValueSeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             1,
+				MaxDepth:             0,
 				KeyValueSeparator:    "",
 				ValueSeparator:       ",",
 				KeysSeparator:        ":",
 				ComposedKeySeparator: ".",
 			}},
-			wantErr: true,
+			wantOption: defaultOption,
 		},
 		{
 			name:   "empty ValueSeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             1,
+				MaxDepth:             0,
 				KeyValueSeparator:    "=",
 				ValueSeparator:       "",
 				KeysSeparator:        ":",
 				ComposedKeySeparator: ".",
 			}},
-			wantErr: true,
+			wantOption: defaultOption,
 		},
 		{
 			name:   "empty KeysSeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             1,
+				MaxDepth:             0,
 				KeyValueSeparator:    "=",
 				ValueSeparator:       ",",
 				KeysSeparator:        "",
 				ComposedKeySeparator: ".",
 			}},
-			wantErr: true,
+			wantOption: defaultOption,
 		},
 		{
 			name:   "empty ComposedKeySeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             1,
+				MaxDepth:             0,
 				KeyValueSeparator:    "=",
 				ValueSeparator:       ",",
 				KeysSeparator:        ":",
 				ComposedKeySeparator: "",
 			}},
-			wantErr: true,
+			wantOption: defaultOption,
 		},
 	}
 	for _, tt := range tests {
@@ -248,8 +248,9 @@ func TestFilter_SetOptions(t *testing.T) {
 				options: tt.fields.options,
 				filter:  tt.fields.filter,
 			}
-			if err := f.SetOptions(tt.args.o); (err != nil) != tt.wantErr {
-				t.Errorf("SetOptions() error = %v, wantErr %v", err, tt.wantErr)
+			f.SetOptions(tt.args.o)
+			if !reflect.DeepEqual(f.options, tt.wantOption) {
+				t.Errorf("SetOptions() got = %v, wanted %v", f.options, tt.wantOption)
 			}
 		})
 	}
@@ -483,6 +484,40 @@ func TestFilter_compileFilter(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Filter in array values on Name, deeper",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterMap: map[string][]string{
+					"RootArray.SubString": {"val1"},
+				},
+				t: reflect.TypeOf(testStruct{}),
+			},
+			wantFilter: map[string][]string{
+				"RootArray.SubString": {"val1"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Filter on Matrix",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterMap: map[string][]string{
+					"matrix": {"val1"},
+				},
+				t: reflect.TypeOf(testStruct{}),
+			},
+			wantFilter: map[string][]string{
+				"Matrix": {"val1"},
+			},
+			wantErr: false,
+		},
+		{
 			name: "Filter in array values on Tag",
 			fields: fields{
 				options: defaultOption,
@@ -596,7 +631,7 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			},
 		},
 		{
-			name: "Ok Array",
+			name: "Ok Array of struct",
 			fields: fields{
 				options: defaultOption,
 				filter:  nil,
@@ -613,6 +648,28 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			want: []reflect.Value{
 				reflect.ValueOf(SubStruct{"string1"}),
 				reflect.ValueOf(SubStruct{"string2"}),
+			},
+		},
+		{
+			name: "Ok Array of string",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootArray",
+				entryValues: reflect.ValueOf(testStruct{
+					RootArraySimple: []string{
+						"string1",
+						"string2",
+					},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf([]string{
+					"string1",
+					"string2",
+				}),
 			},
 		},
 		{
@@ -707,6 +764,133 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			},
 			want: []reflect.Value{
 				reflect.ValueOf(SubStruct{"string3"}),
+			},
+		},
+		{
+			name: "Ok Map with incorrect entry",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootMap.entry",
+				entryValues: reflect.ValueOf(testStruct{
+					RootMap: map[string]SubStruct{"entry1": {"string3"}},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(SubStruct{"string3"}),
+			},
+		},
+		{
+			name: "Ok Map with Array of String entry",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootMap.entry1",
+				entryValues: reflect.ValueOf(testStruct{
+					RootMapArrayOfSimple: map[string][]string{"entry1": {"string3"}},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf([]string{"string3"}),
+			},
+		},
+		{
+			name: "Ok Map simple string with entry",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootMap.entry1",
+				entryValues: reflect.ValueOf(testStruct{
+					RootMapSimple: map[string]string{"entry1": "string3"},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf("string3"),
+			},
+		},
+		{
+			name: "Ok Map with Array of Struct entry",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootMap.entry1",
+				entryValues: reflect.ValueOf(testStruct{
+					RootMapArrayOfStruct: map[string][]SubStruct{
+						"entry1": {
+							SubStruct{"string3"},
+							SubStruct{"string4"},
+						},
+						"entry2": {
+							SubStruct{"string3"},
+							SubStruct{"string4"},
+						},
+					},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf([]SubStruct{{"string3"}, {"string4"}}),
+			},
+		},
+		{
+			name: "Ok Map with Array of Struct entry, deeper",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootMap.entry1.SubString",
+				entryValues: reflect.ValueOf(testStruct{
+					RootMapArrayOfStruct: map[string][]SubStruct{
+						"entry1": {
+							SubStruct{"string3"},
+							SubStruct{"string4"},
+						},
+						"entry2": {
+							SubStruct{"string3"},
+							SubStruct{"string4"},
+						},
+					},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(SubStruct{"string3"}),
+				reflect.ValueOf(SubStruct{"string4"}),
+			},
+		},
+		{
+			name: "Ok Matrix",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "Matrix",
+				entryValues: reflect.ValueOf(testStruct{
+					Matrix: [][]string{
+						{"AA", "AB", "AC"},
+						{"BA", "BB", "BC"},
+						{"CA", "CB", "CC"},
+					},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf("AA"),
+				reflect.ValueOf("AB"),
+				reflect.ValueOf("AC"),
+				reflect.ValueOf("BA"),
+				reflect.ValueOf("BB"),
+				reflect.ValueOf("BC"),
+				reflect.ValueOf("CA"),
+				reflect.ValueOf("CB"),
+				reflect.ValueOf("CC"),
 			},
 		},
 		{
@@ -890,7 +1074,7 @@ func Test_foundFieldInStruct(t *testing.T) {
 				filterKey: "ptrStructRoot",
 				t:         reflect.TypeOf(&testStruct{}),
 			},
-			wantFieldName: getField(reflect.TypeOf(testStruct{}), 6),
+			wantFieldName: getField(reflect.TypeOf(testStruct{}), 7),
 		},
 		{
 			name: "not found",
@@ -922,12 +1106,17 @@ type SubStruct struct {
 }
 
 type testStruct struct {
-	RootString    string               `json:"stringRoot,omitempty"`
-	RootInt       int                  `json:"intRoot,omitempty"`
-	RootFloat     float32              `json:"floatRoot,omitempty"`
-	RootBool      bool                 `json:"boolRoot,omitempty"`
-	RootArray     []SubStruct          `json:"arrayRoot,omitempty"`
-	RootStruct    SubStruct            `json:"structRoot,omitempty"`
-	RootPtrStruct *SubStruct           `json:"ptrStructRoot,omitempty"`
-	RootMap       map[string]SubStruct `json:"mapRoot,omitempty"`
+	RootString           string                 `json:"stringRoot,omitempty"`
+	RootInt              int                    `json:"intRoot,omitempty"`
+	RootFloat            float32                `json:"floatRoot,omitempty"`
+	RootBool             bool                   `json:"boolRoot,omitempty"`
+	RootArray            []SubStruct            `json:"arrayRoot,omitempty"`
+	RootArraySimple      []string               `json:"arrayRootSimple,omitempty"`
+	RootStruct           SubStruct              `json:"structRoot,omitempty"`
+	RootPtrStruct        *SubStruct             `json:"ptrStructRoot,omitempty"`
+	RootMap              map[string]SubStruct   `json:"mapRoot,omitempty"`
+	RootMapSimple        map[string]string      `json:"mapRootString,omitempty"`
+	RootMapArrayOfSimple map[string][]string    `json:"mapRootArrayOfString,omitempty"`
+	RootMapArrayOfStruct map[string][]SubStruct `json:"mapRootArrayOfString,omitempty"`
+	Matrix               [][]string             `json:"matrix,omitempty"`
 }

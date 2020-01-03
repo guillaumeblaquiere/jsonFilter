@@ -41,45 +41,32 @@ var defaultOption = &Options{
 
 // If options are set, all the fields have to be defined. No empty string allowed, no negative max depth allowed
 // In case of error, no options are applied and the default option is used instead.
-func (f *Filter) SetOptions(o *Options) error {
+func (f *Filter) SetOptions(o *Options) {
 	if o == nil {
-		errorMessage := "options can't be nil. Options ignored, default used"
-		f.options = defaultOption
-		log.Error(errorMessage)
-		return errors.New(errorMessage)
+		o = defaultOption
+		log.Warn("options can't be nil. Options ignored, default used")
 	}
 	if o.MaxDepth < 0 {
-		errorMessage := "MaxDepth must be positive. 0 min infinite depth. Options ignored, default used"
-		f.options = defaultOption
-		log.Error(errorMessage)
-		return errors.New(errorMessage)
+		o.MaxDepth = defaultOption.MaxDepth
+		log.Warnf("MaxDepth must be positive. 0 means infinite depth. Option entry ignored, default used %q \n", defaultOption.MaxDepth)
 	}
 	if o.KeyValueSeparator == "" {
-		errorMessage := "KeyValueSeparator can't be empty. Options ignored, default used"
-		f.options = defaultOption
-		log.Error(errorMessage)
-		return errors.New(errorMessage)
+		o.KeyValueSeparator = defaultOption.KeyValueSeparator
+		log.Warnf("KeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.KeyValueSeparator)
 	}
 	if o.ValueSeparator == "" {
-		errorMessage := "ValueSeparator can't be empty. Options ignored, default used"
-		f.options = defaultOption
-		log.Error(errorMessage)
-		return errors.New(errorMessage)
+		o.ValueSeparator = defaultOption.ValueSeparator
+		log.Warnf("ValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.ValueSeparator)
 	}
 	if o.KeysSeparator == "" {
-		errorMessage := "KeysSeparator can't be empty. Options ignored, default used"
-		f.options = defaultOption
-		log.Error(errorMessage)
-		return errors.New(errorMessage)
+		o.KeysSeparator = defaultOption.KeysSeparator
+		log.Warnf("KeysSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.KeysSeparator)
 	}
 	if o.ComposedKeySeparator == "" {
-		errorMessage := "ComposedKeySeparator can't be empty. Options ignored, default used"
-		f.options = defaultOption
-		log.Error(errorMessage)
-		return errors.New(errorMessage)
+		o.ComposedKeySeparator = defaultOption.ComposedKeySeparator
+		log.Warnf("ComposedKeySeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.ComposedKeySeparator)
 	}
 	f.options = o
-	return nil
 }
 
 // Initialize the filter with the requested filter and the struct on which to apply later the filter
@@ -188,30 +175,48 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 				val = valueToScan.Elem()
 			}
 
+			var res reflect.Value
 			// If the current element is a map
 			if val.Kind() == reflect.Map {
 				// search the matching key in the value list
+				foundEntry := false
 				for _, v := range val.MapKeys() {
 					if fmt.Sprint(v) == part {
-						scanResult = append(scanResult, val.MapIndex(v))
+						res = val.MapIndex(v)
+						foundEntry = true
+						break //only one entry in the map key list
 					}
+				}
+				if !foundEntry {
+					//If no entry match the key of the map key list, continue to the next value, forget this part of the tree
+					continue
 				}
 			} else { // if not, scan the structure
-				res := val.FieldByName(part)
-
-				// In case of array found, add all the matching values to the result (or next value th scan if not the leaf)
-				if res.Kind() == reflect.Slice {
-					for i := 0; i < res.Len(); i++ {
-						scanResult = append(scanResult, res.Index(i))
-					}
-				} else {
-					scanResult = append(scanResult, res)
-				}
+				res = val.FieldByName(part)
 			}
+
+			// In case of array found, add all the matching values to the result (or next value th scan if not the leaf)
+			if res.Kind() == reflect.Slice {
+				scanResult = extractValueFromSlice(scanResult, res)
+			} else {
+				scanResult = append(scanResult, res)
+			}
+
 		}
 		valuesToScan = scanResult
 	}
 	return valuesToScan
+}
+
+func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
+	for i := 0; i < v.Len(); i++ {
+		if v.Index(i).Kind() == reflect.Slice {
+			r = extractValueFromSlice(r, v.Index(i))
+		} else {
+			r = append(r, v.Index(i))
+		}
+	}
+	return r
 }
 
 // Return error if 2 time the same key in the Filter
@@ -264,6 +269,12 @@ func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (e
 		for i, part := range filterKeyPart {
 			var composedPart string
 
+			fmt.Println(objectToInspect.Kind())
+
+			// If map, get the type of the element in the array
+			for objectToInspect.Kind() == reflect.Slice {
+				objectToInspect = objectToInspect.Elem()
+			}
 			//if map, keep the key as is
 			if objectToInspect.Kind() == reflect.Map {
 				composedPart = part
@@ -278,10 +289,10 @@ func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (e
 				}
 				objectToInspect = fieldStruct.Type
 
-				// If slice, get only the elements type
+				/*// If slice, get only the elements type
 				if objectToInspect.Kind() == reflect.Slice {
 					objectToInspect = objectToInspect.Elem()
-				}
+				}*/
 
 				// If it's not the root element of the composed key, add a separator the the filter name
 				composedPart = fieldStruct.Name
