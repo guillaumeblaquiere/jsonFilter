@@ -1,3 +1,6 @@
+/*
+TODO
+*/
 package jsonFilter
 
 import (
@@ -12,10 +15,10 @@ import (
 Structure to define the option of the Filter
 
 	MaxDepth             Limit the depth of the key search. in case of complex object, can limit the compute resources
-	KeyValueSeparator    Character(s) to separate key (filter name)  from values (value to compare). Default is '='
-	ValueSeparator       Character(s) to separate values (value to compare). Default is ','
-	KeysSeparator        Character(s) to separate keys (filters name). Default is ':'
-	ComposedKeySeparator Character(s) to separate key part in case of composed key (filter.subfilter) . Default is '.'
+	KeyValueSeparator    Character(s) to separate key (filter name)  from values (value to compare). Default is `=`
+	ValueSeparator       Character(s) to separate values (value to compare). Default is `,`
+	KeysSeparator        Character(s) to separate keys (filters name). Default is `:`
+	ComposedKeySeparator Character(s) to separate key part in case of composed key (filter.subfilter) . Default is `.`
 */
 type Options struct {
 	MaxDepth             int
@@ -25,6 +28,12 @@ type Options struct {
 	ComposedKeySeparator string
 }
 
+/*
+Filter structure to use for filtering. Init the default value like this
+```
+filter := jsonFilter.Filter{}
+```
+*/
 type Filter struct {
 	options *Options
 	filter  map[string][]string
@@ -39,8 +48,29 @@ var defaultOption = &Options{
 	ComposedKeySeparator: ".",
 }
 
-// If options are set, all the fields have to be defined. No empty string allowed, no negative max depth allowed
-// In case of error, no options are applied and the default option is used instead.
+/*
+Set the option to the filter.
+
+If the option is nil, the default option will be used
+
+If there is some missing or incorrect value to the defined option, a warning message is displayed and the erroneous part
+is replace by the default ones.
+
+To set option
+```
+filter := jsonFilter.Filter{}
+
+o := &jsonFilter.Options{
+	MaxDepth:             4,
+	KeyValueSeparator:    "=",
+	ValueSeparator:       ",",
+	KeysSeparator:        ":",
+	ComposedKeySeparator: "->",
+}
+
+filter.SetOptions(o)
+```
+*/
 func (f *Filter) SetOptions(o *Options) {
 	if o == nil {
 		o = defaultOption
@@ -69,8 +99,22 @@ func (f *Filter) SetOptions(o *Options) {
 	f.options = o
 }
 
-// Initialize the filter with the requested filter and the struct on which to apply later the filter
-// The filter result is saved in the Filter struct
+/*
+Initialize the filter with the requested filter and the struct on which to apply later the filter
+
+The filter parsing and compilation are saved in the Filter struct
+
+Errors are returned in case of
+
+- Duplicated entry in the filter keyname
+- Violation of filter format:
+  - No values for a key
+  - No key for a filter
+- Filter key not exist in the provided interface
+  - Struct field name not match the filter key
+  - Struct json tag not match the filter key
+
+*/
 func (f *Filter) Init(filterValue string, i interface{}) (err error) {
 	if f.options == nil {
 		f.options = defaultOption
@@ -87,13 +131,22 @@ func (f *Filter) Init(filterValue string, i interface{}) (err error) {
 }
 
 /*
-Apply the typed Filter to the entries. The entries must be an array.
-Return an array with only the matching entries
+Apply the initialized Filter to a list (array) of struct. The type of array elements is the same as this one provided
+in the Init method. The entries must be an array.
+Return an array with only the matching entries, else an error is returned
 
-Matching the filters means
+Cast the return in the array type like this
 
- * match all defined filters (AND condition)
- * On one Filter, match at least 1 value of the values list defined on the Filter (OR condition)
+```
+ret, err := filter.ApplyFilter(results)
+if err != nil {
+	// Perform error handling
+	fmt.Println(err)
+	return
+}
+// Cast here the return
+results = ret.([]structExample)
+```
 */
 func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 
@@ -166,15 +219,6 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 		for _, valueToScan := range valuesToScan {
 			val := valueToScan
 
-			//In case of pointer
-			if valueToScan.Kind() == reflect.Ptr {
-				//If the pointer lead to nil value
-				if val.Pointer() == 0 {
-					continue
-				}
-				val = valueToScan.Elem()
-			}
-
 			var res reflect.Value
 			// If the current element is a map
 			if val.Kind() == reflect.Map {
@@ -195,6 +239,15 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 				res = val.FieldByName(part)
 			}
 
+			//In case of pointer
+			if res.Kind() == reflect.Ptr {
+				//If the pointer lead to nil value
+				if res.Pointer() == 0 {
+					continue
+				}
+				res = res.Elem()
+			}
+
 			// In case of array found, add all the matching values to the result (or next value th scan if not the leaf)
 			if res.Kind() == reflect.Slice {
 				scanResult = extractValueFromSlice(scanResult, res)
@@ -208,12 +261,24 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 	return valuesToScan
 }
 
+/*
+Recursive loop for getting all the values from a Tensor (array of N dimension)
+*/
 func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
 	for i := 0; i < v.Len(); i++ {
 		if v.Index(i).Kind() == reflect.Slice {
 			r = extractValueFromSlice(r, v.Index(i))
 		} else {
-			r = append(r, v.Index(i))
+			curVal := v.Index(i)
+			//In case of pointer
+			if curVal.Kind() == reflect.Ptr {
+				//If the pointer lead to nil value
+				if curVal.Pointer() == 0 {
+					continue
+				}
+				curVal = curVal.Elem()
+			}
+			r = append(r, curVal)
 		}
 	}
 	return r
@@ -236,6 +301,12 @@ func (f *Filter) parseFilter(filterValue string) (filterMap map[string][]string,
 		}
 
 		key := filterKeyValue[0]
+
+		// Check if key is not empty
+		if key == "" {
+			return nil, errors.New("No filter key")
+		}
+
 		// Check the max depth
 		if f.options.MaxDepth > 0 && len(strings.Split(key, f.options.ComposedKeySeparator)) > f.options.MaxDepth {
 			return nil, errors.New(fmt.Sprintf("The Filter key %s doen't match the max depth key set to %d", key, f.options.MaxDepth))
@@ -269,16 +340,22 @@ func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (e
 		for i, part := range filterKeyPart {
 			var composedPart string
 
-			fmt.Println(objectToInspect.Kind())
-
-			// If map, get the type of the element in the array
+			// If array, loop on it to get the element contained in the tensor (Array of N dimension)
 			for objectToInspect.Kind() == reflect.Slice {
 				objectToInspect = objectToInspect.Elem()
+				//In case of ptr
+				if objectToInspect.Kind() == reflect.Ptr {
+					objectToInspect = objectToInspect.Elem()
+				}
 			}
 			//if map, keep the key as is
 			if objectToInspect.Kind() == reflect.Map {
 				composedPart = part
 				objectToInspect = objectToInspect.Elem()
+				//In case of ptr
+				if objectToInspect.Kind() == reflect.Ptr {
+					objectToInspect = objectToInspect.Elem()
+				}
 			} else { // look into the structure
 
 				fieldStruct := foundFieldInStruct(part, objectToInspect)
@@ -289,14 +366,10 @@ func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (e
 				}
 				objectToInspect = fieldStruct.Type
 
-				/*// If slice, get only the elements type
-				if objectToInspect.Kind() == reflect.Slice {
-					objectToInspect = objectToInspect.Elem()
-				}*/
-
 				// If it's not the root element of the composed key, add a separator the the filter name
 				composedPart = fieldStruct.Name
 			}
+			//Add a composed separator if it's not the root part
 			if i != 0 {
 				composedFilterKey += f.options.ComposedKeySeparator
 			}

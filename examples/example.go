@@ -8,9 +8,16 @@ import (
 
 func main() {
 	// Get the filter from a request, in query parameter for example. Define the filters field that you want
-	// filters, _ := r.URL.Query()["filters"]
+	/*
+		filters, _ := r.URL.Query()["filters"]
+	*/
 
-	//filterValue := "Key1=val1,val2:composed.SubKey=val3:Maps.entry1.key1=val5,val4"
+	//
+	// Example of complex filters. Uncomment and test this example
+	//
+
+	// Filter on several values, on the JSON field name or on the Structure name.
+	filterValue := "Key1=val1,val2:composed.SubKey=val3:Maps.entry1.key1=val5,val4"
 
 	// Filter on simple array of string
 	//filterValue := "Key1=val1,val2:arraysimple=valArray2"
@@ -19,7 +26,7 @@ func main() {
 	//filterValue := "Key1=val1,val2:array.SubKey=valArray"
 
 	// Filter on map of struct
-	//filterValue := "Key1=val1,val2:maps.entry=val"
+	//filterValue := "Key1=val1,val2:maps.entry1.Key1=val4"
 
 	// Filter on map of String
 	//filterValue := "Key1=val1,val2:mapsimple.entry=val"
@@ -31,9 +38,21 @@ func main() {
 	//filterValue := "Key1=val1,val2:mapofarraystruct.entry.SubKey=val"
 
 	// Filter on map of Array of Struct
-	filterValue := "Key1=val1,val2:Matrix=AA"
+	//filterValue := "Key1=val1,val2:Matrix=AA"
 
 	filter := jsonFilter.Filter{}
+
+	// Example of options definition, not required if you want to use the standard option
+	/*	o := &jsonFilter.Options{
+			MaxDepth:             4,
+			KeyValueSeparator:    "=",
+			ValueSeparator:       ",",
+			KeysSeparator:        ":",
+			ComposedKeySeparator: "->",
+		}
+
+		filter.SetOptions(o)
+	*/
 	if filterValue != "" {
 		err := filter.Init(filterValue, structExample{})
 		if err != nil {

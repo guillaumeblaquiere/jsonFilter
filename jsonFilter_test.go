@@ -467,6 +467,40 @@ func TestFilter_compileFilter(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Filter in array of ptr",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterMap: map[string][]string{
+					"RootArrayPtr.RootString": {"val1"},
+				},
+				t: reflect.TypeOf(testStruct{}),
+			},
+			wantFilter: map[string][]string{
+				"RootArrayPtr.RootString": {"val1"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Filter in map of ptr",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterMap: map[string][]string{
+					"RootMapPtr.RootString": {"val1"},
+				},
+				t: reflect.TypeOf(testStruct{}),
+			},
+			wantFilter: map[string][]string{
+				"RootMapPtr.RootString": {"val1"},
+			},
+			wantErr: false,
+		},
+		{
 			name: "Filter in array values on Name",
 			fields: fields{
 				options: defaultOption,
@@ -651,6 +685,47 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			},
 		},
 		{
+			name: "Ok Array of Ptr struct",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootArrayPtr",
+				entryValues: reflect.ValueOf(testStruct{
+					RootArrayPtr: []*testStruct{
+						{RootString: "string1"},
+						{RootString: "string2"},
+					},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(testStruct{RootString: "string1"}),
+				reflect.ValueOf(testStruct{RootString: "string2"}),
+			},
+		},
+		{
+			name: "Ok Array of Ptr struct, deeper",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootArrayPtr.RootString",
+				entryValues: reflect.ValueOf(testStruct{
+					RootArrayPtr: []*testStruct{
+						{RootString: "string1"},
+						{RootString: "string2"},
+						nil,
+					},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf("string1"),
+				reflect.ValueOf("string2"),
+			},
+		},
+		{
 			name: "Ok Array of string",
 			fields: fields{
 				options: defaultOption,
@@ -697,11 +772,11 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			args: args{
 				filterKey: "RootPtrStruct",
 				entryValues: reflect.ValueOf(testStruct{
-					RootPtrStruct: &SubStruct{"string3"},
+					RootPtrStruct: &testStruct{RootString: "string3"},
 				}),
 			},
 			want: []reflect.Value{
-				reflect.ValueOf(&SubStruct{"string3"}),
+				reflect.ValueOf(testStruct{RootString: "string3"}),
 			},
 		},
 		{
@@ -725,9 +800,9 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterKey: "RootPtrStruct.SubString",
+				filterKey: "RootPtrStruct.RootString",
 				entryValues: reflect.ValueOf(testStruct{
-					RootPtrStruct: &SubStruct{"string3"},
+					RootPtrStruct: &testStruct{RootString: "string3"},
 				}),
 			},
 			want: []reflect.Value{
@@ -748,6 +823,22 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 			},
 			want: []reflect.Value{
 				reflect.ValueOf(map[string]SubStruct{"entry1": {"string3"}}),
+			},
+		},
+		{
+			name: "Ok Map ptr",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil,
+			},
+			args: args{
+				filterKey: "RootPtrStruct.RootPtrStruct",
+				entryValues: reflect.ValueOf(testStruct{
+					RootPtrStruct: &testStruct{RootPtrStruct: &testStruct{RootString: "val1"}},
+				}),
+			},
+			want: []reflect.Value{
+				reflect.ValueOf(testStruct{RootString: "val1"}),
 			},
 		},
 		{
@@ -998,6 +1089,26 @@ func TestFilter_parseFilter(t *testing.T) {
 			wantErr:       true,
 		},
 		{
+			name: "Wrong filter: no key",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil, //always null at parsing time
+			},
+			args:          args{filterValue: "=val1"},
+			wantFilterMap: nil,
+			wantErr:       true,
+		},
+		{
+			name: "Wrong filter: no key, no value",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil, //always null at parsing time
+			},
+			args:          args{filterValue: "="},
+			wantFilterMap: nil,
+			wantErr:       true,
+		},
+		{
 			name: "Wrong filter: multi keys",
 			fields: fields{
 				options: defaultOption,
@@ -1113,10 +1224,12 @@ type testStruct struct {
 	RootArray            []SubStruct            `json:"arrayRoot,omitempty"`
 	RootArraySimple      []string               `json:"arrayRootSimple,omitempty"`
 	RootStruct           SubStruct              `json:"structRoot,omitempty"`
-	RootPtrStruct        *SubStruct             `json:"ptrStructRoot,omitempty"`
+	RootPtrStruct        *testStruct            `json:"ptrStructRoot,omitempty"`
 	RootMap              map[string]SubStruct   `json:"mapRoot,omitempty"`
 	RootMapSimple        map[string]string      `json:"mapRootString,omitempty"`
 	RootMapArrayOfSimple map[string][]string    `json:"mapRootArrayOfString,omitempty"`
 	RootMapArrayOfStruct map[string][]SubStruct `json:"mapRootArrayOfString,omitempty"`
+	RootArrayPtr         []*testStruct          `json:"arrayRootPtr,omitempty"`
+	RootMapPtr           map[string]*testStruct `json:"mapRootPtr,omitempty"`
 	Matrix               [][]string             `json:"matrix,omitempty"`
 }
