@@ -1,5 +1,11 @@
 /*
-TODO
+Apply a post processing filters to the Datastore/Firestore results mapped in struct with json tag or not.
+
+The filter is API oriented and designed to be provided by an API consumer in param to your its request.
+This library work with Go app and use reflection. It performs 3 things
+  - Check if the provided filter is valid.
+  - Compile the filter according with the data structure to filter -> Validate the filter against the structure to filter.
+  - Apply the filter to the array of structure.
 */
 package jsonFilter
 
@@ -12,29 +18,30 @@ import (
 )
 
 /*
-Structure to define the option of the Filter
+Structure to define the option of the Filter.
 
-	MaxDepth             Limit the depth of the key search. in case of complex object, can limit the compute resources
-	KeyValueSeparator    Character(s) to separate key (filter name)  from values (value to compare). Default is `=`
-	ValueSeparator       Character(s) to separate values (value to compare). Default is `,`
-	KeysSeparator        Character(s) to separate keys (filters name). Default is `:`
-	ComposedKeySeparator Character(s) to separate key part in case of composed key (filter.subfilter) . Default is `.`
+You can customize it if you want. Else the default values are applied
 */
 type Options struct {
-	MaxDepth             int
-	KeyValueSeparator    string
-	ValueSeparator       string
-	KeysSeparator        string
+	// Limit the depth of the key search. In case of complex object, can limit the compute resources. 0 means infinite. Default is '0'
+	MaxDepth int
+	// Character(s) to separate key (filter name)  from values (value to compare). Default is '='
+	KeyValueSeparator string
+	//  Character(s) to separate values (value to compare). Default is ','
+	ValueSeparator string
+	// Character(s) to separate keys (filters name). Default is ':'
+	KeysSeparator string
+	// Character(s) to separate key part in case of composed key (filter.subfilter) . Default is '.'
 	ComposedKeySeparator string
 }
 
 /*
 Filter structure to use for filtering. Init the default value like this
-```
-filter := jsonFilter.Filter{}
-```
+  filter := jsonFilter.Filter{}
+
 */
 type Filter struct {
+	// Only private fields
 	options *Options
 	filter  map[string][]string
 }
@@ -51,25 +58,24 @@ var defaultOption = &Options{
 /*
 Set the option to the filter.
 
-If the option is nil, the default option will be used
+If the option is nil, the default option will be used.
 
 If there is some missing or incorrect value to the defined option, a warning message is displayed and the erroneous part
 is replace by the default ones.
 
-To set option
-```
-filter := jsonFilter.Filter{}
+To set option:
+	filter := jsonFilter.Filter{}
 
-o := &jsonFilter.Options{
-	MaxDepth:             4,
-	KeyValueSeparator:    "=",
-	ValueSeparator:       ",",
-	KeysSeparator:        ":",
-	ComposedKeySeparator: "->",
-}
+	o := &jsonFilter.Options{
+		MaxDepth:             4,
+		KeyValueSeparator:    "=",
+		ValueSeparator:       ",",
+		KeysSeparator:        ":",
+		ComposedKeySeparator: "->",
+	}
 
-filter.SetOptions(o)
-```
+	filter.SetOptions(o)
+
 */
 func (f *Filter) SetOptions(o *Options) {
 	if o == nil {
@@ -102,17 +108,16 @@ func (f *Filter) SetOptions(o *Options) {
 /*
 Initialize the filter with the requested filter and the struct on which to apply later the filter
 
-The filter parsing and compilation are saved in the Filter struct
+The filter parsing and compilation are saved in the Filter struct.
 
-Errors are returned in case of
-
-- Duplicated entry in the filter keyname
-- Violation of filter format:
-  - No values for a key
-  - No key for a filter
-- Filter key not exist in the provided interface
-  - Struct field name not match the filter key
-  - Struct json tag not match the filter key
+Errors are returned in case of:
+  - Duplicated entry in the filter keyname
+  - Violation of filter format:
+    - No values for a key
+    - No key for a filter
+  - Filter key not exist in the provided interface
+    - Struct field name not match the filter key
+    - Struct json tag not match the filter key
 
 */
 func (f *Filter) Init(filterValue string, i interface{}) (err error) {
@@ -133,20 +138,19 @@ func (f *Filter) Init(filterValue string, i interface{}) (err error) {
 /*
 Apply the initialized Filter to a list (array) of struct. The type of array elements is the same as this one provided
 in the Init method. The entries must be an array.
-Return an array with only the matching entries, else an error is returned
 
-Cast the return in the array type like this
+Return an array with only the matching entries, else an error is returned.
 
-```
-ret, err := filter.ApplyFilter(results)
-if err != nil {
-	// Perform error handling
-	fmt.Println(err)
-	return
-}
-// Cast here the return
-results = ret.([]structExample)
-```
+Cast the return in the array type like this:
+	ret, err := filter.ApplyFilter(results)
+	if err != nil {
+		// Perform error handling
+		fmt.Println(err)
+		return
+	}
+	// Cast here the return
+	results = ret.([]structExample)
+
 */
 func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 

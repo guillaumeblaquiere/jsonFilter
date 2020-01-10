@@ -1,5 +1,9 @@
 # Overview
 
+[![Build Status](https://github.com/guillaumeblaquiere/jsonFilter/workflows/build/badge.svg)](https://github.com/guillaumeblaquiere/jsonFilter/actions?query=workflow%3Abuild)
+[![Test Status](https://github.com/guillaumeblaquiere/jsonFilter/workflows/test/badge.svg)](https://github.com/guillaumeblaquiere/jsonFilter/actions?query=workflow%3Atest)
+[![GoDoc](https://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/github.com/guillaumeblaquiere/jsonFilter)
+
 This library allows you to apply **post processing filters** to the Datastore/Firestore results. 
 
 The filter is API oriented and designed to be provided by an API consumer in param to your its request.
