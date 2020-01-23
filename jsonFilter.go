@@ -14,6 +14,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -25,8 +26,14 @@ You can customize it if you want. Else the default values are applied
 type Options struct {
 	// Limit the depth of the key search. In case of complex object, can limit the compute resources. 0 means infinite. Default is '0'
 	MaxDepth int
-	// Character(s) to separate key (filter name)  from values (value to compare). Default is '='
-	KeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for an equal comparison. Default is '='
+	EqualKeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for a greater than comparison. Default is '>'
+	GreaterThanKeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for a lower than comparison. Default is '<'
+	LowerThanKeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for a not equal comparison. Default is '!='
+	NotEqualKeyValueSeparator string
 	//  Character(s) to separate values (value to compare). Default is ','
 	ValueSeparator string
 	// Character(s) to separate keys (filters name). Default is ':'
@@ -43,16 +50,24 @@ Filter structure to use for filtering. Init the default value like this
 type Filter struct {
 	// Only private fields
 	options *Options
-	filter  map[string][]string
+	filter  map[string]operatorValues
+}
+
+type operatorValues struct {
+	Operator string
+	Values   []string
 }
 
 // Default option used in case of no specific set.
 var defaultOption = &Options{
-	MaxDepth:             0,
-	KeyValueSeparator:    "=",
-	ValueSeparator:       ",",
-	KeysSeparator:        ":",
-	ComposedKeySeparator: ".",
+	MaxDepth:                     0,
+	EqualKeyValueSeparator:       "=",
+	GreaterThanKeyValueSeparator: ">",
+	LowerThanKeyValueSeparator:   "<",
+	NotEqualKeyValueSeparator:    "!=",
+	ValueSeparator:               ",",
+	KeysSeparator:                ":",
+	ComposedKeySeparator:         ".",
 }
 
 /*
@@ -67,11 +82,14 @@ To set option:
 	filter := jsonFilter.Filter{}
 
 	o := &jsonFilter.Options{
-		MaxDepth:             4,
-		KeyValueSeparator:    "=",
-		ValueSeparator:       ",",
-		KeysSeparator:        ":",
-		ComposedKeySeparator: "->",
+		MaxDepth:             			4,
+		EqualKeyValueSeparator:    		"=",
+  		GreaterThanKeyValueSeparator: 	">",
+		LowerThanKeyValueSeparator:   	"<",
+		NotEqualKeyValueSeparator:    	"!=",
+		ValueSeparator:       			",",
+		KeysSeparator:        			":",
+		ComposedKeySeparator: 			"->",
 	}
 
 	filter.SetOptions(o)
@@ -86,9 +104,21 @@ func (f *Filter) SetOptions(o *Options) {
 		o.MaxDepth = defaultOption.MaxDepth
 		log.Warnf("MaxDepth must be positive. 0 means infinite depth. Option entry ignored, default used %q \n", defaultOption.MaxDepth)
 	}
-	if o.KeyValueSeparator == "" {
-		o.KeyValueSeparator = defaultOption.KeyValueSeparator
-		log.Warnf("KeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.KeyValueSeparator)
+	if o.EqualKeyValueSeparator == "" {
+		o.EqualKeyValueSeparator = defaultOption.EqualKeyValueSeparator
+		log.Warnf("EqualKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.EqualKeyValueSeparator)
+	}
+	if o.GreaterThanKeyValueSeparator == "" {
+		o.GreaterThanKeyValueSeparator = defaultOption.GreaterThanKeyValueSeparator
+		log.Warnf("GreaterThanKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.GreaterThanKeyValueSeparator)
+	}
+	if o.LowerThanKeyValueSeparator == "" {
+		o.LowerThanKeyValueSeparator = defaultOption.LowerThanKeyValueSeparator
+		log.Warnf("LowerThanKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.LowerThanKeyValueSeparator)
+	}
+	if o.NotEqualKeyValueSeparator == "" {
+		o.NotEqualKeyValueSeparator = defaultOption.NotEqualKeyValueSeparator
+		log.Warnf("NotEqualKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.NotEqualKeyValueSeparator)
 	}
 	if o.ValueSeparator == "" {
 		o.ValueSeparator = defaultOption.ValueSeparator
@@ -180,12 +210,35 @@ func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 			filterMatch := false
 
 			// Loop on the Filter values and test all against the entry field value
-			for _, filterValue := range filterValues {
+			for _, filterValue := range filterValues.Values {
 				for _, entryValue := range entryValueList {
-					//Use Sprint for converting the entry value to String
-					if fmt.Sprint(entryValue) == filterValue {
-						// If the field match, flag it and stop the loop: At least 1 of the Filter Values have to match (OR condition)
-						filterMatch = true
+					// Select the correct operator
+					switch filterValues.Operator {
+					case f.options.EqualKeyValueSeparator:
+						if fmt.Sprint(entryValue) == filterValue {
+							filterMatch = true
+						}
+					case f.options.NotEqualKeyValueSeparator:
+						if fmt.Sprint(entryValue) != filterValue {
+							filterMatch = true
+						}
+					case f.options.GreaterThanKeyValueSeparator:
+						//Compare only numeric values
+						valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thankd to parser check
+						entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
+						if err == nil && entryFloat > valueFloat {
+							filterMatch = true
+						}
+					case f.options.LowerThanKeyValueSeparator:
+						//Compare only numeric values
+						valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thankd to parser check
+						entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
+						if err == nil && entryFloat < valueFloat {
+							filterMatch = true
+						}
+					}
+					// If the field match stop the loop: At least 1 of the Filter Values have to match (OR condition)
+					if filterMatch {
 						break
 					}
 				}
@@ -291,16 +344,17 @@ func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
 // Return error if 2 time the same key in the Filter
 // return error if the composed filter depth is higher than this defined in options (0 = infinite)
 // Filter default option pattern is key1=value1,value2:key2=value3,value4
-func (f *Filter) parseFilter(filterValue string) (filterMap map[string][]string, err error) {
-	filterMap = map[string][]string{}
+func (f *Filter) parseFilter(filterValue string) (filterMap map[string]operatorValues, err error) {
+	filterMap = map[string]operatorValues{}
 	filters := strings.Split(filterValue, f.options.KeysSeparator)
 
 	// Parse all filters found
 	for _, filter := range filters {
-		filterKeyValue := strings.Split(filter, f.options.KeyValueSeparator) // index 0 = key, index 1 = value(s)
+
+		filterKeyValue, op := f.getFilterAndValue(filter)
 
 		// If there isn't values part, it's an error
-		if len(filterKeyValue) < 2 {
+		if !isKeyValuesValidPair(filterKeyValue) {
 			return nil, errors.New(fmt.Sprintf("No values defined for the key %s filter", filter))
 		}
 
@@ -324,15 +378,61 @@ func (f *Filter) parseFilter(filterValue string) (filterMap map[string][]string,
 
 		// extract the values and set them to the map
 		filterValues := strings.Split(filterKeyValue[1], f.options.ValueSeparator)
-		filterMap[key] = filterValues
+
+		if op == f.options.GreaterThanKeyValueSeparator || op == f.options.LowerThanKeyValueSeparator {
+			if len(filterValues) > 1 {
+				return nil, errors.New("the Filter 'greater than' and 'lower than' must have exactly 1 value")
+			}
+			if _, err := strconv.ParseFloat(filterValues[0], 10); err != nil {
+				return nil, errors.New(fmt.Sprintf("the Filter 'greater than' and 'lower than' must have a numeric value. Here %v", filterValue[0]))
+			}
+		}
+
+		filterMap[key] = operatorValues{
+			Operator: op,
+			Values:   filterValues,
+		}
 	}
 	return
 }
 
+// Get the key and the values of the filters by testing possible operators
+// return an empty array if any separator matches
+// In case of 2 separators work when splitting the filter, we keep only the longest separator
+// Example: in case of = and != both will split on =, but we only keep != because it's the longest
+func (f *Filter) getFilterAndValue(filter string) (filterKeyValues []string, opFound string) {
+
+	if fkv := strings.Split(filter, f.options.EqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.EqualKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.EqualKeyValueSeparator
+	}
+
+	if fkv := strings.Split(filter, f.options.NotEqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.NotEqualKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.NotEqualKeyValueSeparator
+	}
+
+	if fkv := strings.Split(filter, f.options.GreaterThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.GreaterThanKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.GreaterThanKeyValueSeparator
+	}
+
+	if fkv := strings.Split(filter, f.options.LowerThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.LowerThanKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.LowerThanKeyValueSeparator
+	}
+
+	return
+}
+
+func isKeyValuesValidPair(filterKeyValues []string) bool {
+	return len(filterKeyValues) == 2
+}
+
 // Find the struct field name in relation with the Filter name provided in the query
 // The search is performed in the json tag of the struct field and on the struct field name in case of missing tag;
-func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (err error) {
-	f.filter = map[string][]string{}
+func (f *Filter) compileFilter(filterMap map[string]operatorValues, t reflect.Type) (err error) {
+	f.filter = map[string]operatorValues{}
 
 	//for all  filters, search is a struct field name match with it
 	for filterKey, filterValues := range filterMap {
