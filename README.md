@@ -6,7 +6,7 @@
 
 This library allows you to apply **post processing filters** to the Datastore/Firestore results. 
 
-The filter is API oriented and designed to be provided by an API consumer in param to your its request.
+The filter format is API oriented and designed to be provided by an API consumer in param to your its request.
 
 # Why to use this additional filter
 
@@ -23,6 +23,8 @@ The library allows you to unlock these limitation:
 - Allow to filter on any type and nested type (map, array, map of array/object, array of map/object,...)
 - Allow to use several filters `IN` on the set of data
 - Use more than 10 elements in a `IN` condition
+- Allow to use several filters `NOT IN` on set of data
+- Allow to compare several range with `>` and `<` operators
 - Don't required any composite index creation 
 
 ## limitation
@@ -31,7 +33,6 @@ There is the known limitation of this library. These can be implemented -> Open 
  
  - No wildcard like * to replace any JSON field name.
  - No wildcard like * or regex to filter on values
- - Only equals comparison is available. Others (!= < >) aren't available
 
 ## Performance concern
 
@@ -89,11 +90,14 @@ You can set an Options structure on filter to customize your filter like this
 
 ```
 	o := &jsonFilter.Options{
-		MaxDepth:             4,
-		KeyValueSeparator:    "=",
-		ValueSeparator:       ",",
-		KeysSeparator:        ":",
-		ComposedKeySeparator: "->",
+		MaxDepth:                       4,
+		EqualKeyValueSeparator:    		"=",
+  		GreaterThanKeyValueSeparator: 	">",
+		LowerThanKeyValueSeparator:   	"<",
+		NotEqualKeyValueSeparator:    	"!=",
+		ValueSeparator:                 ",",
+		KeysSeparator:                  ":",
+		ComposedKeySeparator:           "->",
 	}
 	
 	filter.SetOptions(o)

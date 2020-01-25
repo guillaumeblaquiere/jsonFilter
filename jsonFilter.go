@@ -1,8 +1,40 @@
 /*
 Apply a post processing filters to the Datastore/Firestore results mapped in struct with json tag or not.
 
-The filter is API oriented and designed to be provided by an API consumer in param to your its request.
-This library work with Go app and use reflection. It performs 3 things
+The filter format is designed to be passed in API param (query or path). The filters can express compound operation.
+
+During the processing the values to filter (an array) is passed to the library to apply the filters.
+A filter can be composed to several part:
+  - Several filter elements
+  - Each filter element have  a tree path into the JSON, name the key, an operator and the value(s) to compare
+
+Each filter element must return OK for keeping the entry value. For this, 4 operators are allowed:
+  - The equality, comparable to IN sql clause: at least one value must matches. Default operator is `=`
+  - The not equality, comparable to NOT IN sql clause: all values mustn't match. Default operator is `!=`
+  - The Greater Than: only one numeric can be compared. Default operator is `>`
+  - The Lower Than: only one numeric can be compared. Default operator is `<`
+
+The filters are applicable on this list types and structures (and combination possibles):
+  - simple types
+	- string
+	- int
+	- float
+	- bool
+  - Complex type
+	- pointer (invisible in JSON result but your structure can include filters)
+	- struct
+	- array
+	  - of simple types
+	  - of map
+	  - of array
+	  - of pointer
+	- map
+	  - of simple types
+	  - of map
+	  - of array
+	  - of pointer
+
+This library works with Go app and use reflection. It performs 3 things
   - Check if the provided filter is valid.
   - Compile the filter according with the data structure to filter -> Validate the filter against the structure to filter.
   - Apply the filter to the array of structure.
@@ -145,6 +177,8 @@ Errors are returned in case of:
   - Violation of filter format:
     - No values for a key
     - No key for a filter
+    - More than 1 value for Greater Than and Lower than operator
+    - Not a numeric (float compliant) value for Greater Than and Lower than operator
   - Filter key not exist in the provided interface
     - Struct field name not match the filter key
     - Struct json tag not match the filter key
@@ -209,32 +243,17 @@ func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 			// Flag to know if at least one Filter values matches the entry value
 			filterMatch := false
 
-			// Loop on the Filter values and test all against the entry field value
-			for _, filterValue := range filterValues.Values {
+			// Select the correct operator
+			switch filterValues.Operator {
+			case f.options.EqualKeyValueSeparator:
+				// Iterate over the matching value of the entry
 				for _, entryValue := range entryValueList {
-					// Select the correct operator
-					switch filterValues.Operator {
-					case f.options.EqualKeyValueSeparator:
+					// Iterate over the filter possible value.
+					for _, filterValue := range filterValues.Values {
+						// If only one matches, the IN operator is valid
 						if fmt.Sprint(entryValue) == filterValue {
 							filterMatch = true
-						}
-					case f.options.NotEqualKeyValueSeparator:
-						if fmt.Sprint(entryValue) != filterValue {
-							filterMatch = true
-						}
-					case f.options.GreaterThanKeyValueSeparator:
-						//Compare only numeric values
-						valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thankd to parser check
-						entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
-						if err == nil && entryFloat > valueFloat {
-							filterMatch = true
-						}
-					case f.options.LowerThanKeyValueSeparator:
-						//Compare only numeric values
-						valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thankd to parser check
-						entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
-						if err == nil && entryFloat < valueFloat {
-							filterMatch = true
+							break
 						}
 					}
 					// If the field match stop the loop: At least 1 of the Filter Values have to match (OR condition)
@@ -242,11 +261,46 @@ func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 						break
 					}
 				}
-				// Key the object if at least one of the leaf match
-				if filterMatch {
-					break
+			case f.options.NotEqualKeyValueSeparator:
+				filterMatch = true
+				// Iterate over the matching value of the entry
+				for _, entryValue := range entryValueList {
+					// Iterate over the filter possible value.
+					for _, filterValue := range filterValues.Values {
+						// If only one value matches, the NOT IN operator doesn't match: All values must not be in
+						if fmt.Sprint(entryValue) == filterValue {
+							filterMatch = false
+							break
+						}
+					}
+					if !filterMatch {
+						break
+					}
+				}
+			case f.options.GreaterThanKeyValueSeparator:
+				for _, entryValue := range entryValueList {
+					filterValue := filterValues.Values[0] // always 1 values for greater than operator
+					//Compare only numeric values
+					valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thanks to parser check
+					entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
+					if err == nil && entryFloat > valueFloat {
+						filterMatch = true
+						break
+					}
+				}
+			case f.options.LowerThanKeyValueSeparator:
+				for _, entryValue := range entryValueList {
+					filterValue := filterValues.Values[0] // always 1 values for greater than operator
+					//Compare only numeric values
+					valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thanks to parser check
+					entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
+					if err == nil && entryFloat < valueFloat {
+						filterMatch = true
+						break
+					}
 				}
 			}
+
 			//If any the Filter value matches the entry field value, we don't keep it in the result set
 			// and break the loop because all fields must match. If one fail, stop here
 			if !filterMatch {
@@ -318,9 +372,7 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 	return valuesToScan
 }
 
-/*
-Recursive loop for getting all the values from a Tensor (array of N dimension)
-*/
+//Recursive loop for getting all the values from a Tensor (array of N dimension)
 func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
 	for i := 0; i < v.Len(); i++ {
 		if v.Index(i).Kind() == reflect.Slice {

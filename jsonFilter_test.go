@@ -71,6 +71,32 @@ func TestFilter_ApplyFilter(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "Filter not equals with 2 values",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootString": {
+						Operator: defaultOption.NotEqualKeyValueSeparator,
+						Values:   []string{"value2", "value3"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+				},
+				{
+					RootString: "value2",
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value1",
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "Minimal filter lower than",
 			fields: fields{
 				options: defaultOption,
