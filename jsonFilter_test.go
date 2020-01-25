@@ -9,7 +9,7 @@ import (
 func TestFilter_ApplyFilter(t *testing.T) {
 	type fields struct {
 		options *Options
-		filter  map[string][]string
+		filter  map[string]operatorValues
 	}
 	type args struct {
 		entries interface{}
@@ -22,31 +22,192 @@ func TestFilter_ApplyFilter(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "Minimal filter",
+			name: "Minimal filter equals",
 			fields: fields{
 				options: defaultOption,
-				filter: map[string][]string{
-					"RootString": {"value1"},
+				filter: map[string]operatorValues{
+					"RootString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"value1"},
+					},
 				},
 			},
 			args: args{entries: []testStruct{
 				{
 					RootString: "value1",
-					RootInt:    0,
-					RootFloat:  0,
-					RootBool:   false,
-					RootArray:  nil,
-					RootStruct: SubStruct{},
 				},
 			}},
 			want: []testStruct{
 				{
 					RootString: "value1",
-					RootInt:    0,
-					RootFloat:  0,
-					RootBool:   false,
-					RootArray:  nil,
-					RootStruct: SubStruct{},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Minimal filter not equals",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootString": {
+						Operator: defaultOption.NotEqualKeyValueSeparator,
+						Values:   []string{"value2"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+				},
+				{
+					RootString: "value2",
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Filter not equals with 2 values",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootString": {
+						Operator: defaultOption.NotEqualKeyValueSeparator,
+						Values:   []string{"value2", "value3"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+				},
+				{
+					RootString: "value2",
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value1",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Minimal filter lower than",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootInt": {
+						Operator: defaultOption.LowerThanKeyValueSeparator,
+						Values:   []string{"11"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+					RootInt:    10,
+				},
+				{
+					RootString: "value2",
+					RootInt:    11,
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value1",
+					RootInt:    10,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Minimal filter greater than",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootInt": {
+						Operator: defaultOption.GreaterThanKeyValueSeparator,
+						Values:   []string{"10"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+					RootInt:    10,
+				},
+				{
+					RootString: "value2",
+					RootInt:    11,
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value2",
+					RootInt:    11,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Minimal filter greater than float",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootFloat": {
+						Operator: defaultOption.GreaterThanKeyValueSeparator,
+						Values:   []string{"10.5"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+					RootFloat:  10.4,
+				},
+				{
+					RootString: "value2",
+					RootFloat:  10.6,
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value2",
+					RootFloat:  10.6,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Minimal filter greater than negative",
+			fields: fields{
+				options: defaultOption,
+				filter: map[string]operatorValues{
+					"RootInt": {
+						Operator: defaultOption.GreaterThanKeyValueSeparator,
+						Values:   []string{"-11"},
+					},
+				},
+			},
+			args: args{entries: []testStruct{
+				{
+					RootString: "value1",
+					RootInt:    -10,
+				},
+				{
+					RootString: "value2",
+					RootInt:    -11,
+				},
+			}},
+			want: []testStruct{
+				{
+					RootString: "value1",
+					RootInt:    -10,
 				},
 			},
 			wantErr: false,
@@ -55,8 +216,11 @@ func TestFilter_ApplyFilter(t *testing.T) {
 			name: "Composite filter",
 			fields: fields{
 				options: defaultOption,
-				filter: map[string][]string{
-					"RootArray.SubString": {"string1"},
+				filter: map[string]operatorValues{
+					"RootArray.SubString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"string1"},
+					},
 				},
 			},
 			args: args{entries: []testStruct{
@@ -121,8 +285,11 @@ func TestFilter_ApplyFilter(t *testing.T) {
 			name: "Minimal filter",
 			fields: fields{
 				options: defaultOption,
-				filter: map[string][]string{
-					"RootString": {"value1"},
+				filter: map[string]operatorValues{
+					"RootString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"value1"},
+					},
 				},
 			},
 			args: args{entries: testStruct{
@@ -158,7 +325,7 @@ func TestFilter_ApplyFilter(t *testing.T) {
 func TestFilter_SetOptions(t *testing.T) {
 	type fields struct {
 		options *Options
-		filter  map[string][]string
+		filter  map[string]operatorValues
 	}
 	type args struct {
 		o *Options
@@ -185,23 +352,74 @@ func TestFilter_SetOptions(t *testing.T) {
 			name:   "negative max depth",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             -1,
-				KeyValueSeparator:    "",
-				ValueSeparator:       "",
-				KeysSeparator:        "",
-				ComposedKeySeparator: "",
+				MaxDepth:                     -1,
+				EqualKeyValueSeparator:       "",
+				NotEqualKeyValueSeparator:    "",
+				LowerThanKeyValueSeparator:   "",
+				GreaterThanKeyValueSeparator: "",
+				ValueSeparator:               "",
+				KeysSeparator:                "",
+				ComposedKeySeparator:         "",
 			}},
 			wantOption: defaultOption,
 		},
 		{
-			name:   "empty KeyValueSeparator",
+			name:   "empty EqualKeyValueSeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             0,
-				KeyValueSeparator:    "",
-				ValueSeparator:       ",",
-				KeysSeparator:        ":",
-				ComposedKeySeparator: ".",
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "",
+				NotEqualKeyValueSeparator:    "!=",
+				LowerThanKeyValueSeparator:   "<",
+				GreaterThanKeyValueSeparator: ">",
+				ValueSeparator:               ",",
+				KeysSeparator:                ":",
+				ComposedKeySeparator:         ".",
+			}},
+			wantOption: defaultOption,
+		},
+		{
+			name:   "empty NotEqualKeyValueSeparator",
+			fields: fields{},
+			args: args{o: &Options{
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "=",
+				NotEqualKeyValueSeparator:    "",
+				LowerThanKeyValueSeparator:   "<",
+				GreaterThanKeyValueSeparator: ">",
+				ValueSeparator:               ",",
+				KeysSeparator:                ":",
+				ComposedKeySeparator:         ".",
+			}},
+			wantOption: defaultOption,
+		},
+		{
+			name:   "empty LowerThanKeyValueSeparator",
+			fields: fields{},
+			args: args{o: &Options{
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "=",
+				NotEqualKeyValueSeparator:    "!=",
+				LowerThanKeyValueSeparator:   "",
+				GreaterThanKeyValueSeparator: ">",
+				ValueSeparator:               ",",
+				KeysSeparator:                ":",
+				ComposedKeySeparator:         ".",
+			}},
+			wantOption: defaultOption,
+		},
+		{
+			name:   "empty GreaterThanKeyValueSeparator",
+			fields: fields{},
+			args: args{o: &Options{
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "=",
+				NotEqualKeyValueSeparator:    "!=",
+				LowerThanKeyValueSeparator:   "<",
+				GreaterThanKeyValueSeparator: "",
+				ValueSeparator:               ",",
+				KeysSeparator:                ":",
+				ComposedKeySeparator:         ".",
 			}},
 			wantOption: defaultOption,
 		},
@@ -209,11 +427,14 @@ func TestFilter_SetOptions(t *testing.T) {
 			name:   "empty ValueSeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             0,
-				KeyValueSeparator:    "=",
-				ValueSeparator:       "",
-				KeysSeparator:        ":",
-				ComposedKeySeparator: ".",
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "=",
+				NotEqualKeyValueSeparator:    "!=",
+				LowerThanKeyValueSeparator:   "<",
+				GreaterThanKeyValueSeparator: ">",
+				ValueSeparator:               "",
+				KeysSeparator:                ":",
+				ComposedKeySeparator:         ".",
 			}},
 			wantOption: defaultOption,
 		},
@@ -221,11 +442,14 @@ func TestFilter_SetOptions(t *testing.T) {
 			name:   "empty KeysSeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             0,
-				KeyValueSeparator:    "=",
-				ValueSeparator:       ",",
-				KeysSeparator:        "",
-				ComposedKeySeparator: ".",
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "=",
+				NotEqualKeyValueSeparator:    "!=",
+				LowerThanKeyValueSeparator:   "<",
+				GreaterThanKeyValueSeparator: ">",
+				ValueSeparator:               ",",
+				KeysSeparator:                "",
+				ComposedKeySeparator:         ".",
 			}},
 			wantOption: defaultOption,
 		},
@@ -233,11 +457,14 @@ func TestFilter_SetOptions(t *testing.T) {
 			name:   "empty ComposedKeySeparator",
 			fields: fields{},
 			args: args{o: &Options{
-				MaxDepth:             0,
-				KeyValueSeparator:    "=",
-				ValueSeparator:       ",",
-				KeysSeparator:        ":",
-				ComposedKeySeparator: "",
+				MaxDepth:                     0,
+				EqualKeyValueSeparator:       "=",
+				NotEqualKeyValueSeparator:    "!=",
+				LowerThanKeyValueSeparator:   "<",
+				GreaterThanKeyValueSeparator: ">",
+				ValueSeparator:               ",",
+				KeysSeparator:                ":",
+				ComposedKeySeparator:         "",
 			}},
 			wantOption: defaultOption,
 		},
@@ -259,7 +486,7 @@ func TestFilter_SetOptions(t *testing.T) {
 func TestFilter_Init(t *testing.T) {
 	type fields struct {
 		options *Options
-		filter  map[string][]string
+		filter  map[string]operatorValues
 	}
 	type args struct {
 		filterValue string
@@ -336,17 +563,17 @@ func TestFilter_Init(t *testing.T) {
 func TestFilter_compileFilter(t *testing.T) {
 	type fields struct {
 		options *Options
-		filter  map[string][]string
+		filter  map[string]operatorValues
 	}
 	type args struct {
-		filterMap map[string][]string
+		filterMap map[string]operatorValues
 		t         reflect.Type
 	}
 	tests := []struct {
 		name       string
 		fields     fields
 		args       args
-		wantFilter map[string][]string
+		wantFilter map[string]operatorValues
 		wantErr    bool
 	}{
 		{
@@ -356,13 +583,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"stringRoot": {"val1"},
+				filterMap: map[string]operatorValues{
+					"stringRoot": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -373,13 +606,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"stringRoot": {"val1"},
+				filterMap: map[string]operatorValues{
+					"stringRoot": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -390,12 +629,15 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"noKey": {"val1"},
+				filterMap: map[string]operatorValues{
+					"noKey": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{},
+			wantFilter: map[string]operatorValues{},
 			wantErr:    true,
 		},
 		{
@@ -405,13 +647,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootStruct.SubString": {"val1"},
+				filterMap: map[string]operatorValues{
+					"RootStruct.SubString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootStruct.SubString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootStruct.SubString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -422,13 +670,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"structRoot.stringSub": {"val1"},
+				filterMap: map[string]operatorValues{
+					"structRoot.stringSub": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootStruct.SubString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootStruct.SubString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -439,13 +693,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootStruct.stringSub": {"val1"},
+				filterMap: map[string]operatorValues{
+					"RootStruct.stringSub": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootStruct.SubString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootStruct.SubString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -456,13 +716,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootMap.entry1.stringSub": {"valMap"},
+				filterMap: map[string]operatorValues{
+					"RootMap.entry1.stringSub": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootMap.entry1.SubString": {"valMap"},
+			wantFilter: map[string]operatorValues{
+				"RootMap.entry1.SubString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -473,13 +739,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootArrayPtr.RootString": {"val1"},
+				filterMap: map[string]operatorValues{
+					"RootArrayPtr.RootString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootArrayPtr.RootString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootArrayPtr.RootString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -490,13 +762,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootMapPtr.RootString": {"val1"},
+				filterMap: map[string]operatorValues{
+					"RootMapPtr.RootString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootMapPtr.RootString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootMapPtr.RootString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -507,13 +785,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootArray": {"val1"},
+				filterMap: map[string]operatorValues{
+					"RootArray": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootArray": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootArray": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -524,13 +808,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"RootArray.SubString": {"val1"},
+				filterMap: map[string]operatorValues{
+					"RootArray.SubString": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootArray.SubString": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootArray.SubString": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -541,13 +831,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"matrix": {"val1"},
+				filterMap: map[string]operatorValues{
+					"matrix": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"Matrix": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"Matrix": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -558,13 +854,19 @@ func TestFilter_compileFilter(t *testing.T) {
 				filter:  nil,
 			},
 			args: args{
-				filterMap: map[string][]string{
-					"arrayRoot": {"val1"},
+				filterMap: map[string]operatorValues{
+					"arrayRoot": {
+						Operator: defaultOption.EqualKeyValueSeparator,
+						Values:   []string{"val1"},
+					},
 				},
 				t: reflect.TypeOf(testStruct{}),
 			},
-			wantFilter: map[string][]string{
-				"RootArray": {"val1"},
+			wantFilter: map[string]operatorValues{
+				"RootArray": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -588,7 +890,7 @@ func TestFilter_compileFilter(t *testing.T) {
 func TestFilter_findValueInComposedKey(t *testing.T) {
 	type fields struct {
 		options *Options
-		filter  map[string][]string
+		filter  map[string]operatorValues
 	}
 	type args struct {
 		filterKey   string
@@ -1016,7 +1318,7 @@ func TestFilter_findValueInComposedKey(t *testing.T) {
 func TestFilter_parseFilter(t *testing.T) {
 	type fields struct {
 		options *Options
-		filter  map[string][]string
+		filter  map[string]operatorValues
 	}
 	type args struct {
 		filterValue string
@@ -1025,7 +1327,7 @@ func TestFilter_parseFilter(t *testing.T) {
 		name          string
 		fields        fields
 		args          args
-		wantFilterMap map[string][]string
+		wantFilterMap map[string]operatorValues
 		wantErr       bool
 	}{
 		{
@@ -1034,9 +1336,12 @@ func TestFilter_parseFilter(t *testing.T) {
 				options: defaultOption,
 				filter:  nil, //always null at parsing time
 			},
-			args: args{filterValue: "key1=val1"},
-			wantFilterMap: map[string][]string{
-				"key1": {"val1"},
+			args: args{filterValue: "key1" + defaultOption.EqualKeyValueSeparator + "val1"},
+			wantFilterMap: map[string]operatorValues{
+				"key1": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -1046,9 +1351,12 @@ func TestFilter_parseFilter(t *testing.T) {
 				options: defaultOption,
 				filter:  nil, //always null at parsing time
 			},
-			args: args{filterValue: "key1=val1"},
-			wantFilterMap: map[string][]string{
-				"key1": {"val1"},
+			args: args{filterValue: "key1" + defaultOption.EqualKeyValueSeparator + "val1"},
+			wantFilterMap: map[string]operatorValues{
+				"key1": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -1058,9 +1366,12 @@ func TestFilter_parseFilter(t *testing.T) {
 				options: defaultOption,
 				filter:  nil, //always null at parsing time
 			},
-			args: args{filterValue: "key1=val1"},
-			wantFilterMap: map[string][]string{
-				"key1": {"val1"},
+			args: args{filterValue: "key1" + defaultOption.EqualKeyValueSeparator + "val1"},
+			wantFilterMap: map[string]operatorValues{
+				"key1": {
+					Operator: defaultOption.EqualKeyValueSeparator,
+					Values:   []string{"val1"},
+				},
 			},
 			wantErr: false,
 		},
@@ -1070,11 +1381,22 @@ func TestFilter_parseFilter(t *testing.T) {
 				options: defaultOption,
 				filter:  nil, //always null at parsing time
 			},
-			args: args{filterValue: "key1=val1,val2,val3:key2=val4:key3=val5,val6"},
-			wantFilterMap: map[string][]string{
-				"key1": {"val1", "val2", "val3"},
-				"key2": {"val4"},
-				"key3": {"val5", "val6"},
+			args: args{filterValue: "key1" + defaultOption.NotEqualKeyValueSeparator + "val1,val2,val3:" +
+				"key2" + defaultOption.LowerThanKeyValueSeparator + "4.5:" +
+				"key3" + defaultOption.GreaterThanKeyValueSeparator + "-5"},
+			wantFilterMap: map[string]operatorValues{
+				"key1": {
+					Operator: defaultOption.NotEqualKeyValueSeparator,
+					Values:   []string{"val1", "val2", "val3"},
+				},
+				"key2": {
+					Operator: defaultOption.LowerThanKeyValueSeparator,
+					Values:   []string{"4.5"},
+				},
+				"key3": {
+					Operator: defaultOption.GreaterThanKeyValueSeparator,
+					Values:   []string{"-5"},
+				},
 			},
 			wantErr: false,
 		},
@@ -1122,15 +1444,55 @@ func TestFilter_parseFilter(t *testing.T) {
 			name: "Wrong filter: too deep",
 			fields: fields{
 				options: &Options{
-					MaxDepth:             1,
-					KeyValueSeparator:    "=",
-					ValueSeparator:       ",",
-					KeysSeparator:        ":",
-					ComposedKeySeparator: ".",
+					MaxDepth:               1,
+					EqualKeyValueSeparator: "=",
+					ValueSeparator:         ",",
+					KeysSeparator:          ":",
+					ComposedKeySeparator:   ".",
 				},
 				filter: nil, //always null at parsing time
 			},
 			args:          args{filterValue: "key1.tooDeep=val1"},
+			wantFilterMap: nil,
+			wantErr:       true,
+		},
+		{
+			name: "Wrong filter: GT multiple values",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil, //always null at parsing time
+			},
+			args:          args{filterValue: "key1" + defaultOption.GreaterThanKeyValueSeparator + "1,2"},
+			wantFilterMap: nil,
+			wantErr:       true,
+		},
+		{
+			name: "Wrong filter: LT multiple values",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil, //always null at parsing time
+			},
+			args:          args{filterValue: "key1" + defaultOption.LowerThanKeyValueSeparator + "1,2"},
+			wantFilterMap: nil,
+			wantErr:       true,
+		},
+		{
+			name: "Wrong filter: GT no numeric values",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil, //always null at parsing time
+			},
+			args:          args{filterValue: "k1" + defaultOption.GreaterThanKeyValueSeparator + "v1"},
+			wantFilterMap: nil,
+			wantErr:       true,
+		},
+		{
+			name: "Wrong filter: LT no numeric values",
+			fields: fields{
+				options: defaultOption,
+				filter:  nil, //always null at parsing time
+			},
+			args:          args{filterValue: "k1" + defaultOption.LowerThanKeyValueSeparator + "v2"},
 			wantFilterMap: nil,
 			wantErr:       true,
 		},
@@ -1232,4 +1594,82 @@ type testStruct struct {
 	RootArrayPtr         []*testStruct          `json:"arrayRootPtr,omitempty"`
 	RootMapPtr           map[string]*testStruct `json:"mapRootPtr,omitempty"`
 	Matrix               [][]string             `json:"matrix,omitempty"`
+}
+
+func TestFilter_getFilterAndValue(t *testing.T) {
+	type fields struct {
+		options *Options
+		filter  map[string]operatorValues
+	}
+	type args struct {
+		filter string
+	}
+	tests := []struct {
+		name                string
+		fields              fields
+		args                args
+		wantFilterKeyValues []string
+		wantOpFound         string
+	}{
+		{
+			name: "EqualFound",
+			fields: fields{
+				options: defaultOption,
+			},
+			args:                args{"k1" + defaultOption.EqualKeyValueSeparator + "v1,v2"},
+			wantFilterKeyValues: []string{"k1", "v1,v2"},
+			wantOpFound:         defaultOption.EqualKeyValueSeparator,
+		},
+		{
+			name: "NotEqualFound",
+			fields: fields{
+				options: defaultOption,
+			},
+			args:                args{"k1" + defaultOption.NotEqualKeyValueSeparator + "v1,v2"},
+			wantFilterKeyValues: []string{"k1", "v1,v2"},
+			wantOpFound:         defaultOption.NotEqualKeyValueSeparator,
+		},
+		{
+			name: "GreaterThanFound",
+			fields: fields{
+				options: defaultOption,
+			},
+			args:                args{"k1" + defaultOption.GreaterThanKeyValueSeparator + "v1"},
+			wantFilterKeyValues: []string{"k1", "v1"},
+			wantOpFound:         defaultOption.GreaterThanKeyValueSeparator,
+		},
+		{
+			name: "LowerThanFound",
+			fields: fields{
+				options: defaultOption,
+			},
+			args:                args{"k1" + defaultOption.LowerThanKeyValueSeparator + "v1"},
+			wantFilterKeyValues: []string{"k1", "v1"},
+			wantOpFound:         defaultOption.LowerThanKeyValueSeparator,
+		},
+		{
+			name: "NotFound",
+			fields: fields{
+				options: defaultOption,
+			},
+			args:                args{"k1,v1,v2"},
+			wantFilterKeyValues: []string{},
+			wantOpFound:         "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &Filter{
+				options: tt.fields.options,
+				filter:  tt.fields.filter,
+			}
+			gotFilterKeyValues, gotOpFound := f.getFilterAndValue(tt.args.filter)
+			if fmt.Sprint(gotFilterKeyValues) != fmt.Sprint(tt.wantFilterKeyValues) { //issue with deepequal on NotFound
+				t.Errorf("getFilterAndValue() gotFilterKeyValues = %v, want %v", gotFilterKeyValues, tt.wantFilterKeyValues)
+			}
+			if gotOpFound != tt.wantOpFound {
+				t.Errorf("getFilterAndValue() gotOpFound = %v, want %v", gotOpFound, tt.wantOpFound)
+			}
+		})
+	}
 }

@@ -45,7 +45,7 @@ func main() {
 	// Example of options definition, not required if you want to use the standard option
 	/*	o := &jsonFilter.Options{
 			MaxDepth:             4,
-			KeyValueSeparator:    "=",
+			EqualKeyValueSeparator:    "=",
 			ValueSeparator:       ",",
 			KeysSeparator:        ":",
 			ComposedKeySeparator: "->",

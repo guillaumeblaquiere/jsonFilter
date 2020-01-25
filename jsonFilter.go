@@ -1,8 +1,40 @@
 /*
 Apply a post processing filters to the Datastore/Firestore results mapped in struct with json tag or not.
 
-The filter is API oriented and designed to be provided by an API consumer in param to your its request.
-This library work with Go app and use reflection. It performs 3 things
+The filter format is designed to be passed in API param (query or path). The filters can express compound operation.
+
+During the processing the values to filter (an array) is passed to the library to apply the filters.
+A filter can be composed to several part:
+  - Several filter elements
+  - Each filter element have  a tree path into the JSON, name the key, an operator and the value(s) to compare
+
+Each filter element must return OK for keeping the entry value. For this, 4 operators are allowed:
+  - The equality, comparable to IN sql clause: at least one value must matches. Default operator is `=`
+  - The not equality, comparable to NOT IN sql clause: all values mustn't match. Default operator is `!=`
+  - The Greater Than: only one numeric can be compared. Default operator is `>`
+  - The Lower Than: only one numeric can be compared. Default operator is `<`
+
+The filters are applicable on this list types and structures (and combination possibles):
+  - simple types
+	- string
+	- int
+	- float
+	- bool
+  - Complex type
+	- pointer (invisible in JSON result but your structure can include filters)
+	- struct
+	- array
+	  - of simple types
+	  - of map
+	  - of array
+	  - of pointer
+	- map
+	  - of simple types
+	  - of map
+	  - of array
+	  - of pointer
+
+This library works with Go app and use reflection. It performs 3 things
   - Check if the provided filter is valid.
   - Compile the filter according with the data structure to filter -> Validate the filter against the structure to filter.
   - Apply the filter to the array of structure.
@@ -14,6 +46,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -25,8 +58,14 @@ You can customize it if you want. Else the default values are applied
 type Options struct {
 	// Limit the depth of the key search. In case of complex object, can limit the compute resources. 0 means infinite. Default is '0'
 	MaxDepth int
-	// Character(s) to separate key (filter name)  from values (value to compare). Default is '='
-	KeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for an equal comparison. Default is '='
+	EqualKeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for a greater than comparison. Default is '>'
+	GreaterThanKeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for a lower than comparison. Default is '<'
+	LowerThanKeyValueSeparator string
+	// Character(s) to separate key (filter name)  from values (value to compare) for a not equal comparison. Default is '!='
+	NotEqualKeyValueSeparator string
 	//  Character(s) to separate values (value to compare). Default is ','
 	ValueSeparator string
 	// Character(s) to separate keys (filters name). Default is ':'
@@ -43,16 +82,24 @@ Filter structure to use for filtering. Init the default value like this
 type Filter struct {
 	// Only private fields
 	options *Options
-	filter  map[string][]string
+	filter  map[string]operatorValues
+}
+
+type operatorValues struct {
+	Operator string
+	Values   []string
 }
 
 // Default option used in case of no specific set.
 var defaultOption = &Options{
-	MaxDepth:             0,
-	KeyValueSeparator:    "=",
-	ValueSeparator:       ",",
-	KeysSeparator:        ":",
-	ComposedKeySeparator: ".",
+	MaxDepth:                     0,
+	EqualKeyValueSeparator:       "=",
+	GreaterThanKeyValueSeparator: ">",
+	LowerThanKeyValueSeparator:   "<",
+	NotEqualKeyValueSeparator:    "!=",
+	ValueSeparator:               ",",
+	KeysSeparator:                ":",
+	ComposedKeySeparator:         ".",
 }
 
 /*
@@ -67,11 +114,14 @@ To set option:
 	filter := jsonFilter.Filter{}
 
 	o := &jsonFilter.Options{
-		MaxDepth:             4,
-		KeyValueSeparator:    "=",
-		ValueSeparator:       ",",
-		KeysSeparator:        ":",
-		ComposedKeySeparator: "->",
+		MaxDepth:             			4,
+		EqualKeyValueSeparator:    		"=",
+  		GreaterThanKeyValueSeparator: 	">",
+		LowerThanKeyValueSeparator:   	"<",
+		NotEqualKeyValueSeparator:    	"!=",
+		ValueSeparator:       			",",
+		KeysSeparator:        			":",
+		ComposedKeySeparator: 			"->",
 	}
 
 	filter.SetOptions(o)
@@ -86,9 +136,21 @@ func (f *Filter) SetOptions(o *Options) {
 		o.MaxDepth = defaultOption.MaxDepth
 		log.Warnf("MaxDepth must be positive. 0 means infinite depth. Option entry ignored, default used %q \n", defaultOption.MaxDepth)
 	}
-	if o.KeyValueSeparator == "" {
-		o.KeyValueSeparator = defaultOption.KeyValueSeparator
-		log.Warnf("KeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.KeyValueSeparator)
+	if o.EqualKeyValueSeparator == "" {
+		o.EqualKeyValueSeparator = defaultOption.EqualKeyValueSeparator
+		log.Warnf("EqualKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.EqualKeyValueSeparator)
+	}
+	if o.GreaterThanKeyValueSeparator == "" {
+		o.GreaterThanKeyValueSeparator = defaultOption.GreaterThanKeyValueSeparator
+		log.Warnf("GreaterThanKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.GreaterThanKeyValueSeparator)
+	}
+	if o.LowerThanKeyValueSeparator == "" {
+		o.LowerThanKeyValueSeparator = defaultOption.LowerThanKeyValueSeparator
+		log.Warnf("LowerThanKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.LowerThanKeyValueSeparator)
+	}
+	if o.NotEqualKeyValueSeparator == "" {
+		o.NotEqualKeyValueSeparator = defaultOption.NotEqualKeyValueSeparator
+		log.Warnf("NotEqualKeyValueSeparator can't be empty. Option entry ignored, default used %q \n", defaultOption.NotEqualKeyValueSeparator)
 	}
 	if o.ValueSeparator == "" {
 		o.ValueSeparator = defaultOption.ValueSeparator
@@ -115,6 +177,8 @@ Errors are returned in case of:
   - Violation of filter format:
     - No values for a key
     - No key for a filter
+    - More than 1 value for Greater Than and Lower than operator
+    - Not a numeric (float compliant) value for Greater Than and Lower than operator
   - Filter key not exist in the provided interface
     - Struct field name not match the filter key
     - Struct json tag not match the filter key
@@ -179,21 +243,64 @@ func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 			// Flag to know if at least one Filter values matches the entry value
 			filterMatch := false
 
-			// Loop on the Filter values and test all against the entry field value
-			for _, filterValue := range filterValues {
+			// Select the correct operator
+			switch filterValues.Operator {
+			case f.options.EqualKeyValueSeparator:
+				// Iterate over the matching value of the entry
 				for _, entryValue := range entryValueList {
-					//Use Sprint for converting the entry value to String
-					if fmt.Sprint(entryValue) == filterValue {
-						// If the field match, flag it and stop the loop: At least 1 of the Filter Values have to match (OR condition)
+					// Iterate over the filter possible value.
+					for _, filterValue := range filterValues.Values {
+						// If only one matches, the IN operator is valid
+						if fmt.Sprint(entryValue) == filterValue {
+							filterMatch = true
+							break
+						}
+					}
+					// If the field match stop the loop: At least 1 of the Filter Values have to match (OR condition)
+					if filterMatch {
+						break
+					}
+				}
+			case f.options.NotEqualKeyValueSeparator:
+				filterMatch = true
+				// Iterate over the matching value of the entry
+				for _, entryValue := range entryValueList {
+					// Iterate over the filter possible value.
+					for _, filterValue := range filterValues.Values {
+						// If only one value matches, the NOT IN operator doesn't match: All values must not be in
+						if fmt.Sprint(entryValue) == filterValue {
+							filterMatch = false
+							break
+						}
+					}
+					if !filterMatch {
+						break
+					}
+				}
+			case f.options.GreaterThanKeyValueSeparator:
+				for _, entryValue := range entryValueList {
+					filterValue := filterValues.Values[0] // always 1 values for greater than operator
+					//Compare only numeric values
+					valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thanks to parser check
+					entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
+					if err == nil && entryFloat > valueFloat {
 						filterMatch = true
 						break
 					}
 				}
-				// Key the object if at least one of the leaf match
-				if filterMatch {
-					break
+			case f.options.LowerThanKeyValueSeparator:
+				for _, entryValue := range entryValueList {
+					filterValue := filterValues.Values[0] // always 1 values for greater than operator
+					//Compare only numeric values
+					valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thanks to parser check
+					entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
+					if err == nil && entryFloat < valueFloat {
+						filterMatch = true
+						break
+					}
 				}
 			}
+
 			//If any the Filter value matches the entry field value, we don't keep it in the result set
 			// and break the loop because all fields must match. If one fail, stop here
 			if !filterMatch {
@@ -265,9 +372,7 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 	return valuesToScan
 }
 
-/*
-Recursive loop for getting all the values from a Tensor (array of N dimension)
-*/
+//Recursive loop for getting all the values from a Tensor (array of N dimension)
 func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
 	for i := 0; i < v.Len(); i++ {
 		if v.Index(i).Kind() == reflect.Slice {
@@ -291,16 +396,17 @@ func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
 // Return error if 2 time the same key in the Filter
 // return error if the composed filter depth is higher than this defined in options (0 = infinite)
 // Filter default option pattern is key1=value1,value2:key2=value3,value4
-func (f *Filter) parseFilter(filterValue string) (filterMap map[string][]string, err error) {
-	filterMap = map[string][]string{}
+func (f *Filter) parseFilter(filterValue string) (filterMap map[string]operatorValues, err error) {
+	filterMap = map[string]operatorValues{}
 	filters := strings.Split(filterValue, f.options.KeysSeparator)
 
 	// Parse all filters found
 	for _, filter := range filters {
-		filterKeyValue := strings.Split(filter, f.options.KeyValueSeparator) // index 0 = key, index 1 = value(s)
+
+		filterKeyValue, op := f.getFilterAndValue(filter)
 
 		// If there isn't values part, it's an error
-		if len(filterKeyValue) < 2 {
+		if !isKeyValuesValidPair(filterKeyValue) {
 			return nil, errors.New(fmt.Sprintf("No values defined for the key %s filter", filter))
 		}
 
@@ -324,15 +430,61 @@ func (f *Filter) parseFilter(filterValue string) (filterMap map[string][]string,
 
 		// extract the values and set them to the map
 		filterValues := strings.Split(filterKeyValue[1], f.options.ValueSeparator)
-		filterMap[key] = filterValues
+
+		if op == f.options.GreaterThanKeyValueSeparator || op == f.options.LowerThanKeyValueSeparator {
+			if len(filterValues) > 1 {
+				return nil, errors.New("the Filter 'greater than' and 'lower than' must have exactly 1 value")
+			}
+			if _, err := strconv.ParseFloat(filterValues[0], 10); err != nil {
+				return nil, errors.New(fmt.Sprintf("the Filter 'greater than' and 'lower than' must have a numeric value. Here %v", filterValue[0]))
+			}
+		}
+
+		filterMap[key] = operatorValues{
+			Operator: op,
+			Values:   filterValues,
+		}
 	}
 	return
 }
 
+// Get the key and the values of the filters by testing possible operators
+// return an empty array if any separator matches
+// In case of 2 separators work when splitting the filter, we keep only the longest separator
+// Example: in case of = and != both will split on =, but we only keep != because it's the longest
+func (f *Filter) getFilterAndValue(filter string) (filterKeyValues []string, opFound string) {
+
+	if fkv := strings.Split(filter, f.options.EqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.EqualKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.EqualKeyValueSeparator
+	}
+
+	if fkv := strings.Split(filter, f.options.NotEqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.NotEqualKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.NotEqualKeyValueSeparator
+	}
+
+	if fkv := strings.Split(filter, f.options.GreaterThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.GreaterThanKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.GreaterThanKeyValueSeparator
+	}
+
+	if fkv := strings.Split(filter, f.options.LowerThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.LowerThanKeyValueSeparator) {
+		filterKeyValues = fkv
+		opFound = f.options.LowerThanKeyValueSeparator
+	}
+
+	return
+}
+
+func isKeyValuesValidPair(filterKeyValues []string) bool {
+	return len(filterKeyValues) == 2
+}
+
 // Find the struct field name in relation with the Filter name provided in the query
 // The search is performed in the json tag of the struct field and on the struct field name in case of missing tag;
-func (f *Filter) compileFilter(filterMap map[string][]string, t reflect.Type) (err error) {
-	f.filter = map[string][]string{}
+func (f *Filter) compileFilter(filterMap map[string]operatorValues, t reflect.Type) (err error) {
+	f.filter = map[string]operatorValues{}
 
 	//for all  filters, search is a struct field name match with it
 	for filterKey, filterValues := range filterMap {
