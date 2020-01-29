@@ -65,26 +65,31 @@ key1=val1,val2:key2.subkey=val3
 ```
 **Where:**
 
--key1 is the JSON field name to filter. You can use composed filter to browse your JSON tree, 
+- key1 is the JSON field name to filter. You can use composed filter to browse your JSON tree, 
 like key2.subkey
+- = is the operator. != > < are also available
 - Val1, val2, val3 are the values to compare
 - The tuple key + value(s) is named Filter
 
 **Behavior:**
 
-- A filter is considered as OK if at least one of values matches (equivalent of OR or IN
- conditions between values)
-- When the filter is applied to an array of structs, the struct is kept in the result if 
-all the filters are OK (AND condition between filters)
+The filters are applied on an array of struct. Each element of the struct are evaluate against the filters
+
+Each filter element must return OK for keeping the entry value. The behavior of the 4 operators are different:
+- The equality, comparable to IN sql clause: at least one value must matches. Default operator is `=`
+- The not equality, comparable to NOT IN sql clause: all values mustn't match. Default operator is `!=`
+- The Greater Than: only one numeric can be compared. Default operator is `>`
+- The Lower Than: only one numeric can be compared. Default operator is `<`
+
 
 ## Customize filter format
 
-The default filter format use these caracter
+The default filter format use these character
 
-- Keys and values are separated by equal sign = by default
-- Filters are separated by colon : by default
-- Values are separated by comma , by default
-- Different fields value of a composed key is dot . by default
+- Keys and values are separated by operator sign `=`,`!=`,`<`,`>` by default
+- Filters are separated by colon `:` by default
+- Values are separated by comma `,` by default
+- Different fields value of a composed key is dot `.` by default
 
 You can set an Options structure on filter to customize your filter like this
 
