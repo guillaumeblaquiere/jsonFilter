@@ -14,6 +14,9 @@ Each filter element must return OK for keeping the entry value. For this, 4 oper
   - The Greater Than: only one numeric can be compared. Default operator is `>`
   - The Lower Than: only one numeric can be compared. Default operator is `<`
 
+It's possible to combine operators on the same key, for example k1 < 10 && k1 != 2.
+The same operator on the same key will raise an error.
+
 The filters are applicable on this list types and structures (and combination possibles):
   - simple types
 	- string
@@ -82,10 +85,11 @@ Filter structure to use for filtering. Init the default value like this
 type Filter struct {
 	// Only private fields
 	options *Options
-	filter  map[string]operatorValues
+	filter  []kov
 }
 
-type operatorValues struct {
+type kov struct {
+	Key      string
 	Operator string
 	Values   []string
 }
@@ -173,7 +177,7 @@ Initialize the filter with the requested filter and the struct on which to apply
 The filter parsing and compilation are saved in the Filter struct.
 
 Errors are returned in case of:
-  - Duplicated entry in the filter keyname
+  - Duplicated entry in the filter key name for the same operator
   - Violation of filter format:
     - No values for a key
     - No key for a filter
@@ -184,15 +188,15 @@ Errors are returned in case of:
     - Struct json tag not match the filter key
 
 */
-func (f *Filter) Init(filterValue string, i interface{}) (err error) {
+func (f *Filter) Init(v string, i interface{}) (err error) {
 	if f.options == nil {
 		f.options = defaultOption
 	}
-	filters, err := f.parseFilter(filterValue)
+	fts, err := f.parseFilter(v)
 	if err != nil {
 		return
 	}
-	err = f.compileFilter(filters, reflect.TypeOf(i))
+	err = f.compileFilter(fts, reflect.TypeOf(i))
 	if err != nil {
 		return
 	}
@@ -216,86 +220,87 @@ Cast the return in the array type like this:
 	results = ret.([]structExample)
 
 */
-func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
+func (f *Filter) ApplyFilter(e interface{}) (interface{}, error) {
 
-	entriesReflected := reflect.ValueOf(entries)
+	eav := reflect.ValueOf(e) //entry array value
 	// Check if the entry is an array
-	if entriesReflected.Kind() != reflect.Slice {
-		log.Errorf("The entries is not of type Array but of type %s. Filter can be applied only on an array", entriesReflected.Type())
+	if eav.Kind() != reflect.Slice {
+		log.Errorf("The entries is not of type Array but of type %s. Filter can be applied only on an array", eav.Type())
 		return nil, errors.New("internal error")
 	}
 
 	//Init ret with the max possible length
-	ret := reflect.MakeSlice(entriesReflected.Type(), 0, entriesReflected.Len())
+	ret := reflect.MakeSlice(eav.Type(), 0, eav.Len())
 
-	// Iterate on all entries
-	for i := 0; i < entriesReflected.Len(); i++ {
-		entryValues := entriesReflected.Index(i)
+	// Iterate on all e
+	for i := 0; i < eav.Len(); i++ {
+		evs := eav.Index(i)
 		// Flag for keeping or not the entry in the result set
-		keepValue := true
+		keepV := true
 
 		// Apply all the filters
-		for filterKey, filterValues := range f.filter {
+		for _, kov := range f.filter {
+			k := kov.Key
 			// Get the values of the entry for this Filter
 			// Find all possible values per entry in case of composite key
-			entryValueList := f.findValueInComposedKey(filterKey, entryValues)
+			evl := f.findValueInComposedKey(k, evs) //entry value list
 
 			// Flag to know if at least one Filter values matches the entry value
-			filterMatch := false
+			m := false // match
 
 			// Select the correct operator
-			switch filterValues.Operator {
+			switch kov.Operator {
 			case f.options.EqualKeyValueSeparator:
 				// Iterate over the matching value of the entry
-				for _, entryValue := range entryValueList {
+				for _, ev := range evl {
 					// Iterate over the filter possible value.
-					for _, filterValue := range filterValues.Values {
+					for _, v := range kov.Values {
 						// If only one matches, the IN operator is valid
-						if fmt.Sprint(entryValue) == filterValue {
-							filterMatch = true
+						if fmt.Sprint(ev) == v {
+							m = true
 							break
 						}
 					}
 					// If the field match stop the loop: At least 1 of the Filter Values have to match (OR condition)
-					if filterMatch {
+					if m {
 						break
 					}
 				}
 			case f.options.NotEqualKeyValueSeparator:
-				filterMatch = true
+				m = true
 				// Iterate over the matching value of the entry
-				for _, entryValue := range entryValueList {
+				for _, ev := range evl {
 					// Iterate over the filter possible value.
-					for _, filterValue := range filterValues.Values {
+					for _, v := range kov.Values {
 						// If only one value matches, the NOT IN operator doesn't match: All values must not be in
-						if fmt.Sprint(entryValue) == filterValue {
-							filterMatch = false
+						if fmt.Sprint(ev) == v {
+							m = false
 							break
 						}
 					}
-					if !filterMatch {
+					if !m {
 						break
 					}
 				}
 			case f.options.GreaterThanKeyValueSeparator:
-				for _, entryValue := range entryValueList {
-					filterValue := filterValues.Values[0] // always 1 values for greater than operator
+				for _, ev := range evl {
+					v := kov.Values[0] // always 1 values for greater than operator
 					//Compare only numeric values
-					valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thanks to parser check
-					entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
-					if err == nil && entryFloat > valueFloat {
-						filterMatch = true
+					vf, _ := strconv.ParseFloat(v, 10) // assume that possible thanks to parser check
+					evf, err := strconv.ParseFloat(fmt.Sprint(ev), 10)
+					if err == nil && evf > vf {
+						m = true
 						break
 					}
 				}
 			case f.options.LowerThanKeyValueSeparator:
-				for _, entryValue := range entryValueList {
-					filterValue := filterValues.Values[0] // always 1 values for greater than operator
+				for _, ev := range evl {
+					v := kov.Values[0] // always 1 values for greater than operator
 					//Compare only numeric values
-					valueFloat, _ := strconv.ParseFloat(filterValue, 10) // assume that possible thanks to parser check
-					entryFloat, err := strconv.ParseFloat(fmt.Sprint(entryValue), 10)
-					if err == nil && entryFloat < valueFloat {
-						filterMatch = true
+					vf, _ := strconv.ParseFloat(v, 10) // assume that possible thanks to parser check
+					evf, err := strconv.ParseFloat(fmt.Sprint(ev), 10)
+					if err == nil && evf < vf {
+						m = true
 						break
 					}
 				}
@@ -303,14 +308,14 @@ func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 
 			//If any the Filter value matches the entry field value, we don't keep it in the result set
 			// and break the loop because all fields must match. If one fail, stop here
-			if !filterMatch {
-				keepValue = false
+			if !m {
+				keepV = false
 				break
 			}
 		}
 		// If all fields matches, keep the entry in the result set
-		if keepValue {
-			ret = reflect.Append(ret, entryValues)
+		if keepV {
+			ret = reflect.Append(ret, evs)
 		}
 	}
 	return ret.Interface(), nil
@@ -318,36 +323,35 @@ func (f *Filter) ApplyFilter(entries interface{}) (interface{}, error) {
 
 // Find all values (leaf value) associated with a composed key (filter name).
 // Return always an array of values in case of search in sub elements which are an array of structs
-func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Value) []reflect.Value {
-	filterKeyPart := strings.Split(filterKey, f.options.ComposedKeySeparator)
-	valuesToScan := []reflect.Value{entryValues}
+func (f *Filter) findValueInComposedKey(k string, evs reflect.Value) []reflect.Value {
+	kp := strings.Split(k, f.options.ComposedKeySeparator) //key p
+	vs := []reflect.Value{evs}                             // values
 
-	//Scan all part of the composed key, going deeper and deeper
-	for _, part := range filterKeyPart {
-		scanResult := make([]reflect.Value, 0)
+	//Scan all p of the composed key, going deeper and deeper
+	for _, p := range kp {
+		r := make([]reflect.Value, 0) //result
 
 		// Scan recursively all sub values found
-		for _, valueToScan := range valuesToScan {
-			val := valueToScan
+		for _, v := range vs {
 
 			var res reflect.Value
 			// If the current element is a map
-			if val.Kind() == reflect.Map {
+			if v.Kind() == reflect.Map {
 				// search the matching key in the value list
 				foundEntry := false
-				for _, v := range val.MapKeys() {
-					if fmt.Sprint(v) == part {
-						res = val.MapIndex(v)
+				for _, val := range v.MapKeys() {
+					if fmt.Sprint(val) == p {
+						res = v.MapIndex(val)
 						foundEntry = true
 						break //only one entry in the map key list
 					}
 				}
 				if !foundEntry {
-					//If no entry match the key of the map key list, continue to the next value, forget this part of the tree
+					//If no entry match the key of the map key list, continue to the next value, forget this p of the tree
 					continue
 				}
 			} else { // if not, scan the structure
-				res = val.FieldByName(part)
+				res = v.FieldByName(p)
 			}
 
 			//In case of pointer
@@ -361,15 +365,15 @@ func (f *Filter) findValueInComposedKey(filterKey string, entryValues reflect.Va
 
 			// In case of array found, add all the matching values to the result (or next value th scan if not the leaf)
 			if res.Kind() == reflect.Slice {
-				scanResult = extractValueFromSlice(scanResult, res)
+				r = extractValueFromSlice(r, res)
 			} else {
-				scanResult = append(scanResult, res)
+				r = append(r, res)
 			}
 
 		}
-		valuesToScan = scanResult
+		vs = r
 	}
-	return valuesToScan
+	return vs
 }
 
 //Recursive loop for getting all the values from a Tensor (array of N dimension)
@@ -393,57 +397,59 @@ func extractValueFromSlice(r []reflect.Value, v reflect.Value) []reflect.Value {
 	return r
 }
 
-// Return error if 2 time the same key in the Filter
+// Return error if there is 2 times the same key with the same operator
 // return error if the composed filter depth is higher than this defined in options (0 = infinite)
-// Filter default option pattern is key1=value1,value2:key2=value3,value4
-func (f *Filter) parseFilter(filterValue string) (filterMap map[string]operatorValues, err error) {
-	filterMap = map[string]operatorValues{}
-	filters := strings.Split(filterValue, f.options.KeysSeparator)
+// Filter default option pattern is key1=value1,value2:key1!=value:key2=value3,value4
+func (f *Filter) parseFilter(filterInput string) (kovs []kov, err error) {
+	kovs = []kov{}
+	fts := strings.Split(filterInput, f.options.KeysSeparator)
 
-	// Parse all filters found
-	for _, filter := range filters {
+	// Parse all fts found
+	for _, ft := range fts {
 
-		filterKeyValue, op := f.getFilterAndValue(filter)
+		kv, op := f.getFilterAndValue(ft)
 
 		// If there isn't values part, it's an error
-		if !isKeyValuesValidPair(filterKeyValue) {
-			return nil, errors.New(fmt.Sprintf("No values defined for the key %s filter", filter))
+		if !isKeyValuesValidPair(kv) {
+			return nil, errors.New(fmt.Sprintf("No values defined for the key %s ft", ft))
 		}
 
-		key := filterKeyValue[0]
+		k := kv[0]
 
 		// Check if key is not empty
-		if key == "" {
+		if k == "" {
 			return nil, errors.New("No filter key")
 		}
 
 		// Check the max depth
-		if f.options.MaxDepth > 0 && len(strings.Split(key, f.options.ComposedKeySeparator)) > f.options.MaxDepth {
-			return nil, errors.New(fmt.Sprintf("The Filter key %s doen't match the max depth key set to %d", key, f.options.MaxDepth))
+		if f.options.MaxDepth > 0 && len(strings.Split(k, f.options.ComposedKeySeparator)) > f.options.MaxDepth {
+			return nil, errors.New(fmt.Sprintf("The Filter key %s doen't match the max depth key set to %d", k, f.options.MaxDepth))
 		}
 
-		// Check if the key has been already set in the map
-		_, here := filterMap[key]
-		if here {
-			return nil, errors.New(fmt.Sprintf("The key %s already exist in the Filter field", filter))
+		// Check if the key with the same operator has been already set in the map
+		for _, kov := range kovs {
+			if kov.Key == k && kov.Operator == op {
+				return nil, errors.New(fmt.Sprintf("The key %s already for the operator %s exist in the Filter field", k, op))
+			}
 		}
 
 		// extract the values and set them to the map
-		filterValues := strings.Split(filterKeyValue[1], f.options.ValueSeparator)
+		v := strings.Split(kv[1], f.options.ValueSeparator)
 
 		if op == f.options.GreaterThanKeyValueSeparator || op == f.options.LowerThanKeyValueSeparator {
-			if len(filterValues) > 1 {
+			if len(v) > 1 {
 				return nil, errors.New("the Filter 'greater than' and 'lower than' must have exactly 1 value")
 			}
-			if _, err := strconv.ParseFloat(filterValues[0], 10); err != nil {
-				return nil, errors.New(fmt.Sprintf("the Filter 'greater than' and 'lower than' must have a numeric value. Here %v", filterValue[0]))
+			if _, err := strconv.ParseFloat(v[0], 10); err != nil {
+				return nil, errors.New(fmt.Sprintf("the Filter 'greater than' and 'lower than' must have a numeric value. Here %v", filterInput[0]))
 			}
 		}
 
-		filterMap[key] = operatorValues{
+		kovs = append(kovs, kov{
+			Key:      k,
 			Operator: op,
-			Values:   filterValues,
-		}
+			Values:   v,
+		})
 	}
 	return
 }
@@ -452,107 +458,109 @@ func (f *Filter) parseFilter(filterValue string) (filterMap map[string]operatorV
 // return an empty array if any separator matches
 // In case of 2 separators work when splitting the filter, we keep only the longest separator
 // Example: in case of = and != both will split on =, but we only keep != because it's the longest
-func (f *Filter) getFilterAndValue(filter string) (filterKeyValues []string, opFound string) {
+func (f *Filter) getFilterAndValue(filter string) (fkvs []string, op string) {
 
-	if fkv := strings.Split(filter, f.options.EqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.EqualKeyValueSeparator) {
-		filterKeyValues = fkv
-		opFound = f.options.EqualKeyValueSeparator
+	if fkv := strings.Split(filter, f.options.EqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(op) < len(f.options.EqualKeyValueSeparator) {
+		fkvs = fkv
+		op = f.options.EqualKeyValueSeparator
 	}
 
-	if fkv := strings.Split(filter, f.options.NotEqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.NotEqualKeyValueSeparator) {
-		filterKeyValues = fkv
-		opFound = f.options.NotEqualKeyValueSeparator
+	if fkv := strings.Split(filter, f.options.NotEqualKeyValueSeparator); isKeyValuesValidPair(fkv) && len(op) < len(f.options.NotEqualKeyValueSeparator) {
+		fkvs = fkv
+		op = f.options.NotEqualKeyValueSeparator
 	}
 
-	if fkv := strings.Split(filter, f.options.GreaterThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.GreaterThanKeyValueSeparator) {
-		filterKeyValues = fkv
-		opFound = f.options.GreaterThanKeyValueSeparator
+	if fkv := strings.Split(filter, f.options.GreaterThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(op) < len(f.options.GreaterThanKeyValueSeparator) {
+		fkvs = fkv
+		op = f.options.GreaterThanKeyValueSeparator
 	}
 
-	if fkv := strings.Split(filter, f.options.LowerThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(opFound) < len(f.options.LowerThanKeyValueSeparator) {
-		filterKeyValues = fkv
-		opFound = f.options.LowerThanKeyValueSeparator
+	if fkv := strings.Split(filter, f.options.LowerThanKeyValueSeparator); isKeyValuesValidPair(fkv) && len(op) < len(f.options.LowerThanKeyValueSeparator) {
+		fkvs = fkv
+		op = f.options.LowerThanKeyValueSeparator
 	}
 
 	return
 }
 
-func isKeyValuesValidPair(filterKeyValues []string) bool {
-	return len(filterKeyValues) == 2
+func isKeyValuesValidPair(fkvs []string) bool {
+	return len(fkvs) == 2
 }
 
 // Find the struct field name in relation with the Filter name provided in the query
 // The search is performed in the json tag of the struct field and on the struct field name in case of missing tag;
-func (f *Filter) compileFilter(filterMap map[string]operatorValues, t reflect.Type) (err error) {
-	f.filter = map[string]operatorValues{}
+func (f *Filter) compileFilter(kovs []kov, t reflect.Type) (err error) {
+	f.filter = []kov{}
 
 	//for all  filters, search is a struct field name match with it
-	for filterKey, filterValues := range filterMap {
-		composedFilterKey := ""
-		filterKeyPart := strings.Split(filterKey, f.options.ComposedKeySeparator)
-		objectToInspect := t
+	for _, kov := range kovs {
+		k := kov.Key
+		ck := "" // composed key
+		ckp := strings.Split(k, f.options.ComposedKeySeparator)
+		ct := t //current type
 
 		// validate the struct field name according with the key composition. Going deeper and deeper
-		for i, part := range filterKeyPart {
-			var composedPart string
+		for i, p := range ckp {
+			var cp string //composed part
 
 			// If array, loop on it to get the element contained in the tensor (Array of N dimension)
-			for objectToInspect.Kind() == reflect.Slice {
-				objectToInspect = objectToInspect.Elem()
+			for ct.Kind() == reflect.Slice {
+				ct = ct.Elem()
 				//In case of ptr
-				if objectToInspect.Kind() == reflect.Ptr {
-					objectToInspect = objectToInspect.Elem()
+				if ct.Kind() == reflect.Ptr {
+					ct = ct.Elem()
 				}
 			}
 			//if map, keep the key as is
-			if objectToInspect.Kind() == reflect.Map {
-				composedPart = part
-				objectToInspect = objectToInspect.Elem()
+			if ct.Kind() == reflect.Map {
+				cp = p
+				ct = ct.Elem()
 				//In case of ptr
-				if objectToInspect.Kind() == reflect.Ptr {
-					objectToInspect = objectToInspect.Elem()
+				if ct.Kind() == reflect.Ptr {
+					ct = ct.Elem()
 				}
 			} else { // look into the structure
 
-				fieldStruct := foundFieldInStruct(part, objectToInspect)
+				fs := foundFieldInStruct(p, ct)
 				// If no match found, raise an error
-				if fieldStruct == nil {
-					log.Debugf("The Filter key %s not exist in the type %s", part, t.Name())
-					return errors.New(fmt.Sprintf("The Filter key %s not exist in the returned object", composedFilterKey+" "+part))
+				if fs == nil {
+					log.Debugf("The Filter key %s not exist in the type %s", p, t.Name())
+					return errors.New(fmt.Sprintf("The Filter key %s not exist in the returned object", ck+" "+p))
 				}
-				objectToInspect = fieldStruct.Type
+				ct = fs.Type
 
 				// If it's not the root element of the composed key, add a separator the the filter name
-				composedPart = fieldStruct.Name
+				cp = fs.Name
 			}
-			//Add a composed separator if it's not the root part
+			//Add a composed separator if it's not the root p
 			if i != 0 {
-				composedFilterKey += f.options.ComposedKeySeparator
+				ck += f.options.ComposedKeySeparator
 			}
-			composedFilterKey += composedPart
+			ck += cp
 		}
-		f.filter[composedFilterKey] = filterValues
+		kov.Key = ck
+		f.filter = append(f.filter, kov)
 	}
 	return
 }
 
 // Return the structField found according with the filter key name and the type to scan.
 // Return nil if nothing found in the type.
-func foundFieldInStruct(filterKey string, t reflect.Type) *reflect.StructField {
-	internalType := t
+func foundFieldInStruct(k string, t reflect.Type) *reflect.StructField {
+	ct := t // current type
 	//In case of ptr
 	if t.Kind() == reflect.Ptr {
-		internalType = t.Elem()
+		ct = t.Elem()
 	}
 
-	for i := 0; i < internalType.NumField(); i++ {
-		field := internalType.Field(i)
+	for i := 0; i < ct.NumField(); i++ {
+		f := ct.Field(i)
 
 		// on each fields, check if the Filter can be applied
-		if strings.Contains(field.Tag.Get("json"), filterKey) ||
-			field.Name == filterKey {
-			// When found,add it to the map and go to the next Filter field
-			return &field
+		if strings.Contains(f.Tag.Get("json"), k) ||
+			f.Name == k {
+			// When found,add it to the map and go to the next Filter f
+			return &f
 		}
 	}
 	return nil
