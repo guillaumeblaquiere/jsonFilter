@@ -41,7 +41,57 @@ This library works with Go app and use reflection. It performs 3 things
   - Check if the provided filter is valid.
   - Compile the filter according with the data structure to filter -> Validate the filter against the structure to filter.
   - Apply the filter to the array of structure.
+
+Here an extract of the examples/example.go file
+  func myFunction(w http.ResponseWriter, r *http.Request) {
+    filterValue, _ := r.URL.Query()["filters"]
+
+    filter := jsonFilter.Filter{}
+    if filterValue != "" {
+        err := filter.Init(filterValue, structExample{})
+        if err != nil {
+            //TODO error handling
+            fmt.Println(err)
+            return
+        }
+    }
+
+    results := make([]structExample,0)
+
+    iter := firestoreClient.Collection("myCollection").Documents(ctx)
+    for {
+        doc, err := iter.Next()
+        if err == iterator.Done {
+            break
+        }
+        if err != nil {
+            log.Error(err)
+            break
+        }
+        var d structExample
+        doc.DataTo(&d)
+        results = append(results,d)
+    }
+
+    if filterValue != "" {
+        ret, err := filter.ApplyFilter(results)
+        if err != nil {
+            //TODO error handling
+            fmt.Println(err)
+            return
+        }
+        results = ret.([]structExample)
+    }
+
+    toPrint, _ := json.Marshal(results)
+    fmt.Println(string(toPrint))
+  }
+
+  type structExample struct {
+    ...
+  }
 */
+
 package jsonFilter
 
 import (
