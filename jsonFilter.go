@@ -222,7 +222,7 @@ func (f *Filter) SetOptions(o *Options) {
 }
 
 /*
-Initialize the filter with the requested filter and the struct on which to apply later the filter
+Initialize the filter with the requested filter and the struct on which to apply later the filter.
 
 The filter parsing and compilation are saved in the Filter struct.
 
